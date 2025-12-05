@@ -1,0 +1,22 @@
+[package]
+name = "gsmtui"
+version = "0.1.0"
+edition = "2021"
+description = "A Terminal User Interface for managing Google Cloud Secrets"
+
+[dependencies]
+# TUI framework
+ratatui = "0.29"
+crossterm = "0.28"
+
+# Google Cloud Secret Manager
+google-cloud-secretmanager-v1 = "1.1"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Error handling
+anyhow = "1.0"
+
+# For clipboard support (optional)
+arboard = "3.4"

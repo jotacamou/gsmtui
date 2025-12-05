@@ -1,0 +1,898 @@
+//! UI rendering module.
+//!
+//! This module handles all the terminal UI rendering using Ratatui.
+//! Each view is rendered by a separate function for clarity.
+
+use ratatui::{
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style, Stylize},
+    symbols,
+    text::{Line, Span, Text},
+    widgets::{Block, Borders, Clear, List, ListItem, Padding, Paragraph, Wrap},
+    Frame,
+};
+
+use crate::app::{App, ConfirmAction, InputMode, View};
+
+// ============================================================================
+// Color Theme - Vibrant colors throughout the app
+// ============================================================================
+
+/// Primary accent color (used for titles, highlights)
+const COLOR_PRIMARY: Color = Color::Rgb(56, 189, 248);   // Bright cyan
+/// Secondary accent color (used for active elements)
+const COLOR_SECONDARY: Color = Color::Rgb(52, 211, 153); // Bright emerald
+/// Background for selected items
+const COLOR_SELECTION: Color = Color::Rgb(99, 102, 241); // Indigo
+/// Text on selection
+const COLOR_SELECTION_TEXT: Color = Color::White;
+/// Muted text color
+const COLOR_MUTED: Color = Color::Rgb(148, 163, 184);    // Brighter gray
+/// Error/danger color
+const COLOR_ERROR: Color = Color::Rgb(251, 113, 133);    // Bright rose
+/// Warning color
+const COLOR_WARNING: Color = Color::Rgb(251, 191, 36);   // Bright amber
+/// Success color
+const COLOR_SUCCESS: Color = Color::Rgb(74, 222, 128);   // Bright green
+/// Border color
+const COLOR_BORDER: Color = Color::Rgb(129, 140, 248);   // Light indigo
+/// Key highlight color (for keyboard shortcuts)
+const COLOR_KEY: Color = Color::Rgb(244, 114, 182);      // Bright pink
+/// Accent color for icons and decorations
+const COLOR_ACCENT: Color = Color::Rgb(192, 132, 252);   // Bright purple
+
+// ============================================================================
+// Main Draw Function
+// ============================================================================
+
+/// Main draw function - dispatches to specific view renderers.
+pub fn draw(frame: &mut Frame, app: &App) {
+    // Create the main layout: header, content, commands bar, status bar
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(7),  // Header (ASCII art + subtitle + project)
+            Constraint::Min(0),     // Main content
+            Constraint::Length(3),  // Commands bar
+            Constraint::Length(1),  // Status bar
+        ])
+        .split(frame.area());
+
+    // Draw the header
+    draw_header(frame, chunks[0], app);
+
+    // Draw the main content based on current view
+    match &app.current_view {
+        View::SecretsList => draw_secrets_list(frame, chunks[1], app),
+        View::SecretDetail => draw_secret_detail(frame, chunks[1], app),
+        View::Help => draw_help(frame, chunks[1]),
+        View::Input(mode) => {
+            // Draw the underlying view first
+            if let Some(View::SecretsList) = &app.previous_view {
+                draw_secrets_list(frame, chunks[1], app);
+            } else {
+                draw_secret_detail(frame, chunks[1], app);
+            }
+            // Then draw the input dialog on top
+            draw_input_dialog(frame, mode, app);
+        }
+        View::Confirm(action) => {
+            // Draw the underlying view first
+            if let Some(View::SecretsList) = &app.previous_view {
+                draw_secrets_list(frame, chunks[1], app);
+            } else {
+                draw_secret_detail(frame, chunks[1], app);
+            }
+            // Then draw the confirmation dialog on top
+            draw_confirm_dialog(frame, action);
+        }
+    }
+
+    // Draw the commands bar (shows available actions)
+    draw_commands_bar(frame, chunks[2], app);
+
+    // Draw the status bar (shows messages)
+    draw_status_bar(frame, chunks[3], app);
+
+    // Draw help overlay if enabled
+    if app.show_help {
+        draw_help_overlay(frame);
+    }
+}
+
+// ============================================================================
+// Header - ASCII Art with Gradient
+// ============================================================================
+
+// Rainbow colors for the ASCII art (8-color spectrum)
+const RAINBOW: [Color; 8] = [
+    Color::Rgb(255, 107, 107),  // Red
+    Color::Rgb(255, 159, 67),   // Orange
+    Color::Rgb(255, 212, 59),   // Yellow
+    Color::Rgb(72, 219, 128),   // Green
+    Color::Rgb(56, 189, 248),   // Cyan
+    Color::Rgb(99, 143, 255),   // Blue
+    Color::Rgb(168, 85, 247),   // Purple
+    Color::Rgb(236, 72, 153),   // Pink
+];
+
+/// Creates a line with rainbow-colored characters.
+fn rainbow_line(text: &str, offset: usize) -> Line<'static> {
+    let spans: Vec<Span> = text
+        .chars()
+        .enumerate()
+        .map(|(i, c)| {
+            let color = RAINBOW[(i + offset) % RAINBOW.len()];
+            Span::styled(c.to_string(), Style::default().fg(color).bold())
+        })
+        .collect();
+    Line::from(spans)
+}
+
+/// Draws the header with ASCII art logo and subtitle.
+fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
+    let loading = if app.is_loading {
+        Span::styled(" Loading...", Style::default().fg(COLOR_WARNING).add_modifier(Modifier::SLOW_BLINK))
+    } else {
+        Span::raw("")
+    };
+
+    // ASCII art lines with rainbow coloring (character by character)
+    // ┏━╸┏━┓┏┳┓   ╺┳╸╻ ╻╻
+    // ┃╺┓┗━┓┃┃┃    ┃ ┃ ┃┃
+    // ┗━┛┗━┛╹ ╹    ╹ ┗━┛╹
+
+    let mut line1 = rainbow_line(" ┏━╸┏━┓┏┳┓   ╺┳╸╻ ╻╻", 0);
+    line1.spans.push(loading.clone());
+
+    let line2 = rainbow_line(" ┃╺┓┗━┓┃┃┃    ┃ ┃ ┃┃", 0);
+
+    let line3 = rainbow_line(" ┗━┛┗━┛╹ ╹    ╹ ┗━┛╹", 0);
+
+    let line4 = Line::from(vec![
+        Span::styled(" Google Cloud Secret Manager ", Style::default().fg(COLOR_PRIMARY)),
+        Span::styled("Terminal User Interface", Style::default().fg(COLOR_ACCENT)),
+    ]);
+
+    let line5 = Line::from(vec![
+        Span::styled(" Project: ", Style::default().fg(COLOR_MUTED)),
+        Span::styled(&app.project_id, Style::default().fg(COLOR_SECONDARY).bold()),
+    ]);
+
+    let content = vec![line1, line2, line3, line4, line5];
+
+    let block = Block::default()
+        .borders(Borders::BOTTOM)
+        .border_style(Style::default().fg(COLOR_BORDER));
+
+    let header = Paragraph::new(content).block(block);
+
+    frame.render_widget(header, area);
+}
+
+// ============================================================================
+// Commands Bar - Shows available keyboard shortcuts
+// ============================================================================
+
+/// Draws the commands bar showing available actions for current view.
+fn draw_commands_bar(frame: &mut Frame, area: Rect, app: &App) {
+    let commands = get_commands_for_view(&app.current_view);
+
+    let mut spans: Vec<Span> = vec![Span::styled(" ", Style::default())];
+
+    for (i, (key, desc)) in commands.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled(" │ ", Style::default().fg(COLOR_BORDER)));
+        }
+        spans.push(Span::styled(*key, Style::default().fg(COLOR_KEY).bold()));
+        spans.push(Span::styled(" ", Style::default()));
+        spans.push(Span::styled(*desc, Style::default().fg(COLOR_MUTED)));
+    }
+
+    let block = Block::default()
+        .borders(Borders::TOP)
+        .border_style(Style::default().fg(COLOR_BORDER));
+
+    let commands_widget = Paragraph::new(Line::from(spans))
+        .block(block);
+
+    frame.render_widget(commands_widget, area);
+}
+
+/// Returns the list of commands available for a given view.
+fn get_commands_for_view(view: &View) -> Vec<(&'static str, &'static str)> {
+    match view {
+        View::SecretsList => vec![
+            ("j/k", "navigate"),
+            ("Enter", "view"),
+            ("n", "new secret"),
+            ("d", "delete"),
+            ("r", "refresh"),
+            ("?", "help"),
+            ("q", "quit"),
+        ],
+        View::SecretDetail => vec![
+            ("j/k", "navigate"),
+            ("s", "show value"),
+            ("c", "copy"),
+            ("a", "add version"),
+            ("e", "enable"),
+            ("x", "disable"),
+            ("d", "destroy"),
+            ("Esc", "back"),
+        ],
+        View::Help => vec![
+            ("Any key", "close"),
+        ],
+        View::Input(_) => vec![
+            ("Enter", "submit"),
+            ("Esc", "cancel"),
+        ],
+        View::Confirm(_) => vec![
+            ("Enter", "confirm"),
+            ("Esc", "cancel"),
+        ],
+    }
+}
+
+// ============================================================================
+// Status Bar
+// ============================================================================
+
+/// Draws the status bar at the bottom (for messages).
+fn draw_status_bar(frame: &mut Frame, area: Rect, app: &App) {
+    let (text, style) = if let Some(status) = &app.status {
+        let style = if status.is_error {
+            Style::default().fg(COLOR_ERROR)
+        } else {
+            Style::default().fg(COLOR_SUCCESS)
+        };
+        (format!(" {} ", status.text), style)
+    } else {
+        (" Ready".to_string(), Style::default().fg(COLOR_MUTED))
+    };
+
+    let status = Paragraph::new(text).style(style);
+    frame.render_widget(status, area);
+}
+
+// ============================================================================
+// Secrets List View
+// ============================================================================
+
+/// Draws the list of secrets.
+fn draw_secrets_list(frame: &mut Frame, area: Rect, app: &App) {
+    // Split into header hint and list
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),  // Section hint
+            Constraint::Min(0),     // List
+        ])
+        .split(area);
+
+    // Draw section hint
+    let hint = Paragraph::new(Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled("", Style::default().fg(COLOR_WARNING)),
+        Span::styled(" ", Style::default()),
+        Span::styled("Secrets", Style::default().fg(COLOR_PRIMARY).bold()),
+        Span::styled(" - Select a secret to view versions and values", Style::default().fg(COLOR_MUTED)),
+    ]));
+    frame.render_widget(hint, chunks[0]);
+
+    // Handle empty state
+    if app.secrets.is_empty() {
+        draw_empty_state(
+            frame,
+            chunks[1],
+            "No secrets found",
+            "Press 'n' to create your first secret",
+            "",
+        );
+        return;
+    }
+
+    // Create list items from secrets
+    let items: Vec<ListItem> = app
+        .secrets
+        .iter()
+        .enumerate()
+        .map(|(idx, secret)| {
+            let is_selected = app.secrets_state.selected() == Some(idx);
+
+            let number = format!("{:>3}", idx + 1);
+            let name = secret.short_name.clone();
+            let date = secret.create_time.clone();
+
+            let style = if is_selected {
+                Style::default().bg(COLOR_SELECTION).fg(COLOR_SELECTION_TEXT)
+            } else {
+                Style::default()
+            };
+
+            let content = Line::from(vec![
+                Span::styled(number, Style::default().fg(COLOR_ACCENT)),
+                Span::styled("  ", style),
+                Span::styled("", if is_selected { Style::default().fg(COLOR_WARNING) } else { Style::default().fg(COLOR_PRIMARY) }),
+                Span::styled(" ", style),
+                Span::styled(name, style.add_modifier(Modifier::BOLD)),
+                Span::styled("  ", style),
+                Span::styled(date, style.fg(if is_selected { COLOR_SELECTION_TEXT } else { COLOR_MUTED })),
+            ]);
+
+            ListItem::new(content).style(style)
+        })
+        .collect();
+
+    // Create the list widget
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(COLOR_BORDER))
+                .border_set(symbols::border::ROUNDED)
+                .title(Line::from(vec![
+                    Span::styled(" ", Style::default()),
+                    Span::styled(format!("{}", app.secrets.len()), Style::default().fg(COLOR_SECONDARY).bold()),
+                    Span::styled(" secrets ", Style::default().fg(Color::White)),
+                ]))
+                .padding(Padding::horizontal(1)),
+        )
+        .highlight_style(Style::default())  // We handle highlighting in items
+        .highlight_symbol("");
+
+    frame.render_stateful_widget(list, chunks[1], &mut app.secrets_state.clone());
+}
+
+// ============================================================================
+// Secret Detail View
+// ============================================================================
+
+/// Draws the secret detail view with versions.
+fn draw_secret_detail(frame: &mut Frame, area: Rect, app: &App) {
+    let secret = match &app.current_secret {
+        Some(s) => s,
+        None => return,
+    };
+
+    // Split the area into sections
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),   // Back hint
+            Constraint::Length(5),   // Secret info card
+            Constraint::Length(2),   // Versions header
+            Constraint::Min(0),      // Versions list / value display
+        ])
+        .split(area);
+
+    // Draw back hint
+    let back_hint = Paragraph::new(Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled("", Style::default().fg(COLOR_PRIMARY)),
+        Span::styled(" ", Style::default()),
+        Span::styled("Esc", Style::default().fg(COLOR_KEY).bold()),
+        Span::styled(" to go back", Style::default().fg(COLOR_MUTED)),
+    ]));
+    frame.render_widget(back_hint, chunks[0]);
+
+    // Draw secret info card
+    let info_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(COLOR_PRIMARY))
+        .border_set(symbols::border::ROUNDED)
+        .title(Line::from(vec![
+            Span::styled(" ", Style::default()),
+            Span::styled("", Style::default().fg(COLOR_PRIMARY)),
+            Span::styled(" Secret Details ", Style::default().fg(Color::White).bold()),
+        ]));
+
+    let info_content = vec![
+        Line::from(vec![
+            Span::styled("  Name     ", Style::default().fg(COLOR_MUTED)),
+            Span::styled(&secret.short_name, Style::default().fg(Color::White).bold()),
+        ]),
+        Line::from(vec![
+            Span::styled("  Created  ", Style::default().fg(COLOR_MUTED)),
+            Span::styled(&secret.create_time, Style::default().fg(Color::White)),
+        ]),
+    ];
+
+    let info = Paragraph::new(info_content).block(info_block);
+    frame.render_widget(info, chunks[1]);
+
+    // Draw versions header with action hints
+    let versions_hint = Paragraph::new(Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled("", Style::default().fg(COLOR_ACCENT)),
+        Span::styled(" ", Style::default()),
+        Span::styled("Versions", Style::default().fg(COLOR_PRIMARY).bold()),
+        Span::styled(" - ", Style::default().fg(COLOR_MUTED)),
+        Span::styled("s", Style::default().fg(COLOR_KEY).bold()),
+        Span::styled(" show  ", Style::default().fg(COLOR_MUTED)),
+        Span::styled("c", Style::default().fg(COLOR_KEY).bold()),
+        Span::styled(" copy  ", Style::default().fg(COLOR_MUTED)),
+        Span::styled("a", Style::default().fg(COLOR_KEY).bold()),
+        Span::styled(" add new", Style::default().fg(COLOR_MUTED)),
+    ]));
+    frame.render_widget(versions_hint, chunks[2]);
+
+    // Determine if we're showing the secret value
+    let (versions_area, value_area) = if app.revealed_value.is_some() {
+        let split = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(5),
+                Constraint::Length(7),
+            ])
+            .split(chunks[3]);
+        (split[0], Some(split[1]))
+    } else {
+        (chunks[3], None)
+    };
+
+    // Draw the versions list
+    draw_versions_list(frame, versions_area, app);
+
+    // Draw the revealed value if present
+    if let (Some(area), Some(value)) = (value_area, &app.revealed_value) {
+        draw_secret_value(frame, area, value);
+    }
+}
+
+/// Draws the versions list.
+fn draw_versions_list(frame: &mut Frame, area: Rect, app: &App) {
+    // Handle empty state
+    if app.versions.is_empty() {
+        draw_empty_state(
+            frame,
+            area,
+            "No versions yet",
+            "Press 'a' to add the first version",
+            "A secret needs at least one version to store a value",
+        );
+        return;
+    }
+
+    let items: Vec<ListItem> = app
+        .versions
+        .iter()
+        .enumerate()
+        .map(|(idx, v)| {
+            let is_selected = app.versions_state.selected() == Some(idx);
+
+            let (state_icon, state_color) = match v.state.as_str() {
+                s if s.contains("Enabled") => ("", COLOR_SUCCESS),
+                s if s.contains("Disabled") => ("", COLOR_WARNING),
+                s if s.contains("Destroyed") => ("", COLOR_ERROR),
+                _ => ("?", COLOR_MUTED),
+            };
+
+            let base_style = if is_selected {
+                Style::default().bg(COLOR_SELECTION).fg(COLOR_SELECTION_TEXT)
+            } else {
+                Style::default()
+            };
+
+            let version_str = format!("v{:<4}", v.version);
+            let state_str = v.state.replace("State::", "");
+            let create_time = v.create_time.clone();
+
+            let content = Line::from(vec![
+                Span::styled(if is_selected { "  " } else { "   " }, base_style),
+                Span::styled(state_icon, Style::default().fg(state_color)),
+                Span::styled(" ", base_style),
+                Span::styled(version_str, base_style.add_modifier(Modifier::BOLD)),
+                Span::styled("  ", base_style),
+                Span::styled(state_str, base_style.fg(if is_selected { COLOR_SELECTION_TEXT } else { state_color })),
+                Span::styled("  ", base_style),
+                Span::styled(create_time, base_style.fg(if is_selected { COLOR_SELECTION_TEXT } else { COLOR_MUTED })),
+            ]);
+
+            ListItem::new(content).style(base_style)
+        })
+        .collect();
+
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(COLOR_BORDER))
+                .border_set(symbols::border::ROUNDED)
+                .title(Line::from(vec![
+                    Span::styled(" ", Style::default()),
+                    Span::styled(format!("{}", app.versions.len()), Style::default().fg(COLOR_SECONDARY).bold()),
+                    Span::styled(" versions ", Style::default().fg(Color::White)),
+                ]))
+                .padding(Padding::horizontal(1)),
+        )
+        .highlight_symbol("");
+
+    frame.render_stateful_widget(list, area, &mut app.versions_state.clone());
+}
+
+/// Draws the revealed secret value panel.
+fn draw_secret_value(frame: &mut Frame, area: Rect, value: &str) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(COLOR_WARNING))
+        .border_set(symbols::border::ROUNDED)
+        .title(Line::from(vec![
+            Span::styled(" ", Style::default()),
+            Span::styled("", Style::default().fg(COLOR_WARNING)),
+            Span::styled(" Secret Value ", Style::default().fg(COLOR_WARNING).bold()),
+            Span::styled("- press ", Style::default().fg(COLOR_MUTED)),
+            Span::styled("s", Style::default().fg(COLOR_KEY).bold()),
+            Span::styled(" to hide ", Style::default().fg(COLOR_MUTED)),
+        ]))
+        .padding(Padding::horizontal(1));
+
+    let content = Paragraph::new(value)
+        .style(Style::default().fg(Color::White))
+        .wrap(Wrap { trim: false })
+        .block(block);
+
+    frame.render_widget(content, area);
+}
+
+// ============================================================================
+// Empty State
+// ============================================================================
+
+/// Draws an empty state with icon, title, and description.
+fn draw_empty_state(frame: &mut Frame, area: Rect, title: &str, action: &str, description: &str) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(COLOR_BORDER))
+        .border_set(symbols::border::ROUNDED);
+
+    let content = vec![
+        Line::from(""),
+        Line::from(""),
+        Line::from(Span::styled("", Style::default().fg(COLOR_ACCENT))),
+        Line::from(""),
+        Line::from(Span::styled(title, Style::default().fg(COLOR_PRIMARY).bold())),
+        Line::from(""),
+        Line::from(Span::styled(action, Style::default().fg(COLOR_SUCCESS))),
+        Line::from(""),
+        Line::from(Span::styled(description, Style::default().fg(COLOR_MUTED))),
+    ];
+
+    let paragraph = Paragraph::new(content)
+        .block(block)
+        .alignment(Alignment::Center);
+
+    frame.render_widget(paragraph, area);
+}
+
+// ============================================================================
+// Help View
+// ============================================================================
+
+/// Draws the full-screen help view.
+fn draw_help(frame: &mut Frame, area: Rect) {
+    let help_text = get_help_text();
+
+    let help = Paragraph::new(help_text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(COLOR_BORDER))
+                .border_set(symbols::border::ROUNDED)
+                .title(Line::from(vec![
+                    Span::styled(" ", Style::default()),
+                    Span::styled(" Keyboard Shortcuts ", Style::default().fg(Color::White).bold()),
+                ])),
+        )
+        .wrap(Wrap { trim: false });
+
+    frame.render_widget(help, area);
+}
+
+/// Draws a help overlay popup.
+fn draw_help_overlay(frame: &mut Frame) {
+    let area = centered_rect(65, 75, frame.area());
+
+    // Clear the background
+    frame.render_widget(Clear, area);
+
+    let help_text = get_help_text();
+
+    let help = Paragraph::new(help_text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(COLOR_PRIMARY))
+                .border_set(symbols::border::DOUBLE)
+                .title(Line::from(vec![
+                    Span::styled(" ", Style::default()),
+                    Span::styled(" Help ", Style::default().fg(Color::White).bold()),
+                    Span::styled("- Press any key to close ", Style::default().fg(COLOR_MUTED)),
+                ]))
+                .style(Style::default()),
+        )
+        .wrap(Wrap { trim: false });
+
+    frame.render_widget(help, area);
+}
+
+/// Returns the help text content with improved formatting.
+fn get_help_text() -> Text<'static> {
+    let key_style = Style::default().fg(COLOR_KEY).bold();
+    let desc_style = Style::default().fg(Color::White);
+    let section_style = Style::default().fg(COLOR_PRIMARY).bold();
+
+    Text::from(vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled("", section_style),
+            Span::styled(" NAVIGATION", section_style),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled("j  ", key_style),
+            Span::styled("or ", Style::default().fg(COLOR_MUTED)),
+            Span::styled("Down  ", key_style),
+            Span::styled("Move to next item", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled("k  ", key_style),
+            Span::styled("or ", Style::default().fg(COLOR_MUTED)),
+            Span::styled("Up    ", key_style),
+            Span::styled("Move to previous item", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled("g  ", key_style),
+            Span::styled("or ", Style::default().fg(COLOR_MUTED)),
+            Span::styled("Home  ", key_style),
+            Span::styled("Jump to first item", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled("G  ", key_style),
+            Span::styled("or ", Style::default().fg(COLOR_MUTED)),
+            Span::styled("End   ", key_style),
+            Span::styled("Jump to last item", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled("Enter     ", key_style),
+            Span::styled("Select / View details", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled("Esc       ", key_style),
+            Span::styled("Go back to previous view", desc_style),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled("", section_style),
+            Span::styled(" SECRETS", section_style),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled("n         ", key_style),
+            Span::styled("Create a new secret", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled("d         ", key_style),
+            Span::styled("Delete selected secret", desc_style),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled("", section_style),
+            Span::styled(" VERSIONS", section_style),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled("a         ", key_style),
+            Span::styled("Add a new version with value", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled("s         ", key_style),
+            Span::styled("Show / Hide secret value", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled("c         ", key_style),
+            Span::styled("Copy secret value to clipboard", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled("e         ", key_style),
+            Span::styled("Enable a disabled version", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled("x         ", key_style),
+            Span::styled("Disable an enabled version", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled("d         ", key_style),
+            Span::styled("Destroy selected version", desc_style),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled("", section_style),
+            Span::styled(" GENERAL", section_style),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled("r         ", key_style),
+            Span::styled("Refresh current view", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled("?  ", key_style),
+            Span::styled("or ", Style::default().fg(COLOR_MUTED)),
+            Span::styled("F1    ", key_style),
+            Span::styled("Show this help", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("    ", Style::default()),
+            Span::styled("q  ", key_style),
+            Span::styled("or ", Style::default().fg(COLOR_MUTED)),
+            Span::styled("Ctrl+C", key_style),
+            Span::styled(" Quit application", desc_style),
+        ]),
+        Line::from(""),
+    ])
+}
+
+// ============================================================================
+// Input Dialog
+// ============================================================================
+
+/// Draws the text input dialog.
+fn draw_input_dialog(frame: &mut Frame, mode: &InputMode, app: &App) {
+    let (title, prompt, icon) = match mode {
+        InputMode::NewSecretName => ("Create New Secret", "Enter a name for your secret:", ""),
+        InputMode::NewVersionValue => ("Add New Version", "Enter the secret value:", ""),
+    };
+
+    let area = centered_rect(50, 25, frame.area());
+
+    // Clear the background
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(COLOR_PRIMARY))
+        .border_set(symbols::border::DOUBLE)
+        .title(Line::from(vec![
+            Span::styled(" ", Style::default()),
+            Span::styled(icon, Style::default().fg(COLOR_PRIMARY)),
+            Span::styled(" ", Style::default()),
+            Span::styled(title, Style::default().fg(Color::White).bold()),
+            Span::styled(" ", Style::default()),
+        ]))
+        .padding(Padding::uniform(1));
+
+    // Build the content
+    let content = vec![
+        Line::from(""),
+        Line::from(Span::styled(prompt, Style::default().fg(Color::White))),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled(&app.input_buffer, Style::default().fg(Color::White).underlined()),
+            Span::styled("", Style::default().fg(COLOR_PRIMARY).add_modifier(Modifier::SLOW_BLINK)),
+        ]),
+        Line::from(""),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled("Enter", Style::default().fg(COLOR_KEY).bold()),
+            Span::styled(" submit  ", Style::default().fg(COLOR_MUTED)),
+            Span::styled("Esc", Style::default().fg(COLOR_KEY).bold()),
+            Span::styled(" cancel", Style::default().fg(COLOR_MUTED)),
+        ]),
+    ];
+
+    let input_widget = Paragraph::new(content).block(block);
+
+    frame.render_widget(input_widget, area);
+}
+
+// ============================================================================
+// Confirmation Dialog
+// ============================================================================
+
+/// Draws the confirmation dialog.
+fn draw_confirm_dialog(frame: &mut Frame, action: &ConfirmAction) {
+    let (title, message, icon) = match action {
+        ConfirmAction::DeleteSecret(name) => (
+            "Delete Secret",
+            format!(
+                "Are you sure you want to delete '{}'?\n\nThis will permanently delete the secret and ALL its versions.\nThis action cannot be undone!",
+                name
+            ),
+            "",
+        ),
+        ConfirmAction::DestroyVersion(secret, version) => (
+            "Destroy Version",
+            format!(
+                "Are you sure you want to destroy version {} of '{}'?\n\nThe secret data will be permanently destroyed.\nThis action cannot be undone!",
+                version, secret
+            ),
+            "",
+        ),
+    };
+
+    let area = centered_rect(55, 35, frame.area());
+
+    // Clear the background
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(COLOR_ERROR))
+        .border_set(symbols::border::DOUBLE)
+        .title(Line::from(vec![
+            Span::styled(" ", Style::default()),
+            Span::styled(icon, Style::default().fg(COLOR_ERROR)),
+            Span::styled(" ", Style::default()),
+            Span::styled(title, Style::default().fg(COLOR_ERROR).bold()),
+            Span::styled(" ", Style::default()),
+        ]))
+        .padding(Padding::uniform(1));
+
+    let content = vec![
+        Line::from(""),
+        Line::from(Span::styled(&message, Style::default().fg(COLOR_WARNING))),
+        Line::from(""),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled("Enter", Style::default().fg(COLOR_ERROR).bold()),
+            Span::styled(" confirm deletion  ", Style::default().fg(COLOR_MUTED)),
+            Span::styled("Esc", Style::default().fg(COLOR_KEY).bold()),
+            Span::styled(" cancel", Style::default().fg(COLOR_MUTED)),
+        ]),
+    ];
+
+    let confirm_widget = Paragraph::new(content)
+        .wrap(Wrap { trim: false })
+        .block(block);
+
+    frame.render_widget(confirm_widget, area);
+}
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/// Helper function to create a centered rectangle.
+fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(area);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
+}
