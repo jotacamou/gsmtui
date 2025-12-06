@@ -7,6 +7,7 @@ use anyhow::Result;
 use ratatui::widgets::ListState;
 
 use crate::event::Action;
+use crate::project_client::{self, ProjectInfo};
 use crate::secret_client::{SecretClient, SecretInfo, VersionInfo};
 
 /// The different views/screens in the application.
@@ -22,6 +23,8 @@ pub enum View {
     Input(InputMode),
     /// Confirmation dialog (for destructive actions)
     Confirm(ConfirmAction),
+    /// Project selector dialog
+    ProjectSelector,
 }
 
 /// Different input modes for text entry.
@@ -88,15 +91,30 @@ pub struct App {
 
     // --- Help visibility ---
     pub show_help: bool,
+
+    // --- Project selector state ---
+    /// List of available GCP projects
+    pub available_projects: Vec<ProjectInfo>,
+    /// Selection state for the projects list
+    pub projects_state: ListState,
 }
 
 impl App {
-    /// Creates a new application instance for the given project.
-    pub fn new(project_id: String) -> Self {
+    /// Creates a new application instance.
+    ///
+    /// If a project_id is provided, starts in SecretsList view.
+    /// If None, starts in ProjectSelector view for the user to choose a project.
+    pub fn new(project_id: Option<String>) -> Self {
+        // Determine initial view and project based on whether a project was provided
+        let (initial_view, project) = match project_id {
+            Some(id) => (View::SecretsList, id),
+            None => (View::ProjectSelector, String::new()),
+        };
+
         Self {
-            project_id,
+            project_id: project,
             client: None,
-            current_view: View::SecretsList,
+            current_view: initial_view,
             previous_view: None,
             is_loading: false,
             status: None,
@@ -108,6 +126,8 @@ impl App {
             revealed_value: None,
             input_buffer: String::new(),
             show_help: false,
+            available_projects: Vec::new(),
+            projects_state: ListState::default(),
         }
     }
 
@@ -143,6 +163,40 @@ impl App {
             }
             Err(e) => {
                 self.set_status(&format!("Error loading secrets: {}", e), true);
+            }
+        }
+
+        self.is_loading = false;
+        Ok(())
+    }
+
+    /// Loads the list of available projects from the API.
+    ///
+    /// Used when starting without a project or when opening the project selector.
+    pub async fn load_projects(&mut self) -> Result<()> {
+        self.is_loading = true;
+        self.set_status("Loading projects...", false);
+
+        match project_client::list_projects().await {
+            Ok(projects) => {
+                self.available_projects = projects;
+                // Try to select the current project in the list, or first item
+                let current_idx = if self.project_id.is_empty() {
+                    0
+                } else {
+                    self.available_projects
+                        .iter()
+                        .position(|p| p.project_id == self.project_id)
+                        .unwrap_or(0)
+                };
+                if !self.available_projects.is_empty() {
+                    self.projects_state.select(Some(current_idx));
+                }
+                let count = self.available_projects.len();
+                self.set_status(&format!("Found {} projects", count), false);
+            }
+            Err(e) => {
+                self.set_status(&format!("Failed to load projects: {}", e), true);
             }
         }
 
@@ -207,6 +261,7 @@ impl App {
         match self.current_view {
             View::SecretsList => self.handle_secrets_list_action(action).await,
             View::SecretDetail => self.handle_secret_detail_action(action).await,
+            View::ProjectSelector => self.handle_project_selector_action(action).await,
             View::Help => {
                 // Any key exits help
                 self.go_back();
@@ -228,6 +283,22 @@ impl App {
             Action::Refresh => self.load_secrets().await?,
             Action::NewSecret => self.start_new_secret(),
             Action::Delete => self.confirm_delete_secret(),
+            Action::OpenProjectSelector => self.open_project_selector().await?,
+            _ => {}
+        }
+        Ok(false)
+    }
+
+    /// Handles actions in the project selector view.
+    async fn handle_project_selector_action(&mut self, action: Action) -> Result<bool> {
+        match action {
+            Action::Quit => return Ok(true),
+            Action::Back => self.go_back(),
+            Action::Up => self.select_previous_project(),
+            Action::Down => self.select_next_project(),
+            Action::Top => self.select_first_project(),
+            Action::Bottom => self.select_last_project(),
+            Action::Enter => self.select_project().await?,
             _ => {}
         }
         Ok(false)
@@ -249,6 +320,7 @@ impl App {
             Action::Enable => self.enable_selected_version().await?,
             Action::Disable => self.disable_selected_version().await?,
             Action::Delete => self.confirm_destroy_version(),
+            Action::OpenProjectSelector => self.open_project_selector().await?,
             _ => {}
         }
         Ok(false)
@@ -362,6 +434,87 @@ impl App {
             self.versions_state.select(Some(len - 1));
             self.revealed_value = None;
         }
+    }
+
+    // --- Project navigation helpers ---
+
+    fn select_previous_project(&mut self) {
+        let len = self.available_projects.len();
+        if len == 0 {
+            return;
+        }
+        let current = self.projects_state.selected().unwrap_or(0);
+        let new = if current == 0 { len - 1 } else { current - 1 };
+        self.projects_state.select(Some(new));
+    }
+
+    fn select_next_project(&mut self) {
+        let len = self.available_projects.len();
+        if len == 0 {
+            return;
+        }
+        let current = self.projects_state.selected().unwrap_or(0);
+        let new = if current >= len - 1 { 0 } else { current + 1 };
+        self.projects_state.select(Some(new));
+    }
+
+    fn select_first_project(&mut self) {
+        if !self.available_projects.is_empty() {
+            self.projects_state.select(Some(0));
+        }
+    }
+
+    fn select_last_project(&mut self) {
+        let len = self.available_projects.len();
+        if len > 0 {
+            self.projects_state.select(Some(len - 1));
+        }
+    }
+
+    /// Opens the project selector dialog.
+    async fn open_project_selector(&mut self) -> Result<()> {
+        // Load the projects
+        self.load_projects().await?;
+
+        // Switch to project selector view
+        self.previous_view = Some(self.current_view.clone());
+        self.current_view = View::ProjectSelector;
+
+        Ok(())
+    }
+
+    /// Selects a project and switches to it.
+    async fn select_project(&mut self) -> Result<()> {
+        if let Some(idx) = self.projects_state.selected() {
+            if let Some(project) = self.available_projects.get(idx) {
+                let new_project_id = project.project_id.clone();
+
+                // Don't reload if same project
+                if new_project_id == self.project_id {
+                    self.set_status("Already on this project", false);
+                    self.go_back();
+                    return Ok(());
+                }
+
+                // Switch to the new project
+                self.project_id = new_project_id.clone();
+                self.client = None; // Clear the client to force reinitialization
+                self.secrets.clear();
+                self.secrets_state = ListState::default();
+                self.current_secret = None;
+                self.versions.clear();
+                self.versions_state = ListState::default();
+                self.revealed_value = None;
+
+                self.set_status(&format!("Switched to project: {}", new_project_id), false);
+                self.current_view = View::SecretsList;
+                self.previous_view = None;
+
+                // Load secrets for the new project
+                self.load_secrets().await?;
+            }
+        }
+        Ok(())
     }
 
     /// Enters the detail view for the selected secret.

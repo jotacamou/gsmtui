@@ -46,6 +46,8 @@ pub enum Action {
     Enable,
     /// Disable an enabled secret version
     Disable,
+    /// Open the project selector
+    OpenProjectSelector,
     /// Character input (for text entry mode)
     Char(char),
     /// Backspace key (for text entry mode)
@@ -129,7 +131,7 @@ impl EventHandler {
             KeyCode::Home | KeyCode::Char('g') => Some(Action::Top),
             KeyCode::End | KeyCode::Char('G') => Some(Action::Bottom),
             KeyCode::Enter => Some(Action::Enter),
-            KeyCode::Esc | KeyCode::Backspace => Some(Action::Back),
+            KeyCode::Esc | KeyCode::Backspace | KeyCode::Char('b') => Some(Action::Back),
 
             // Actions
             KeyCode::Char('q') => Some(Action::Quit),
@@ -142,6 +144,7 @@ impl EventHandler {
             KeyCode::Char('?') => Some(Action::Help),
             KeyCode::Char('e') => Some(Action::Enable),
             KeyCode::Char('x') => Some(Action::Disable),
+            KeyCode::Char('p') => Some(Action::OpenProjectSelector),
 
             // F1 for help (common convention)
             KeyCode::F(1) => Some(Action::Help),

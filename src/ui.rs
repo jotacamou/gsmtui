@@ -86,6 +86,12 @@ pub fn draw(frame: &mut Frame, app: &App) {
             // Then draw the confirmation dialog on top
             draw_confirm_dialog(frame, action);
         }
+        View::ProjectSelector => {
+            // Draw the secrets list in the background
+            draw_secrets_list(frame, chunks[1], app);
+            // Then draw the project selector dialog on top
+            draw_project_selector(frame, app);
+        }
     }
 
     // Draw the commands bar (shows available actions)
@@ -206,20 +212,24 @@ fn get_commands_for_view(view: &View) -> Vec<(&'static str, &'static str)> {
             ("j/k", "navigate"),
             ("Enter", "view"),
             ("n", "new secret"),
-            ("d", "delete"),
+            ("p", "switch project"),
             ("r", "refresh"),
             ("?", "help"),
             ("q", "quit"),
         ],
-        View::SecretDetail => vec![
+        View::ProjectSelector => vec![
             ("j/k", "navigate"),
-            ("s", "show value"),
+            ("Enter", "select"),
+            ("Esc", "cancel"),
+        ],
+        View::SecretDetail => vec![
+            ("b", "back"),
+            ("j/k", "navigate"),
+            ("s", "show"),
             ("c", "copy"),
-            ("a", "add version"),
-            ("e", "enable"),
-            ("x", "disable"),
-            ("d", "destroy"),
-            ("Esc", "back"),
+            ("a", "add"),
+            ("e/x", "enable/disable"),
+            ("p", "project"),
         ],
         View::Help => vec![
             ("Any key", "close"),
@@ -870,6 +880,112 @@ fn draw_confirm_dialog(frame: &mut Frame, action: &ConfirmAction) {
         .block(block);
 
     frame.render_widget(confirm_widget, area);
+}
+
+// ============================================================================
+// Project Selector Dialog
+// ============================================================================
+
+/// Draws the project selector dialog.
+fn draw_project_selector(frame: &mut Frame, app: &App) {
+    let area = centered_rect(60, 70, frame.area());
+
+    // Clear the background
+    frame.render_widget(Clear, area);
+
+    // Split area into title bar, list, and footer
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),  // Title
+            Constraint::Min(0),     // List
+            Constraint::Length(3),  // Footer with commands
+        ])
+        .margin(1)
+        .split(area);
+
+    // Outer block
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(COLOR_PRIMARY))
+        .border_set(symbols::border::DOUBLE)
+        .title(Line::from(vec![
+            Span::styled(" ", Style::default()),
+            Span::styled("", Style::default().fg(COLOR_ACCENT)),
+            Span::styled(" Select Project ", Style::default().fg(Color::White).bold()),
+        ]));
+
+    frame.render_widget(block, area);
+
+    // Title/hint
+    let hint = Paragraph::new(Line::from(vec![
+        Span::styled("Current: ", Style::default().fg(COLOR_MUTED)),
+        Span::styled(&app.project_id, Style::default().fg(COLOR_SECONDARY).bold()),
+    ]));
+    frame.render_widget(hint, chunks[0]);
+
+    // Build the list of projects
+    let items: Vec<ListItem> = app
+        .available_projects
+        .iter()
+        .enumerate()
+        .map(|(idx, project)| {
+            let is_selected = app.projects_state.selected() == Some(idx);
+            let is_current = project.project_id == app.project_id;
+
+            let style = if is_selected {
+                Style::default().bg(COLOR_SELECTION).fg(COLOR_SELECTION_TEXT)
+            } else {
+                Style::default()
+            };
+
+            let number = format!("{:>3}", idx + 1);
+            let project_id = project.project_id.clone();
+            let display_name = if project.display_name != project.project_id {
+                format!(" ({})", project.display_name)
+            } else {
+                String::new()
+            };
+
+            let current_marker = if is_current {
+                Span::styled(" (current)", Style::default().fg(COLOR_SUCCESS))
+            } else {
+                Span::raw("")
+            };
+
+            let content = Line::from(vec![
+                Span::styled(number, Style::default().fg(COLOR_ACCENT)),
+                Span::styled("  ", style),
+                Span::styled(
+                    if is_selected { "" } else { "" },
+                    Style::default().fg(if is_current { COLOR_SUCCESS } else { COLOR_PRIMARY }),
+                ),
+                Span::styled(" ", style),
+                Span::styled(project_id, style.add_modifier(Modifier::BOLD)),
+                Span::styled(display_name, style.fg(COLOR_MUTED)),
+                current_marker,
+            ]);
+
+            ListItem::new(content).style(style)
+        })
+        .collect();
+
+    let list = List::new(items)
+        .block(Block::default())
+        .highlight_symbol("");
+
+    frame.render_stateful_widget(list, chunks[1], &mut app.projects_state.clone());
+
+    // Footer with commands
+    let footer = Paragraph::new(Line::from(vec![
+        Span::styled("j/k", Style::default().fg(COLOR_KEY).bold()),
+        Span::styled(" navigate  ", Style::default().fg(COLOR_MUTED)),
+        Span::styled("Enter", Style::default().fg(COLOR_KEY).bold()),
+        Span::styled(" select  ", Style::default().fg(COLOR_MUTED)),
+        Span::styled("Esc", Style::default().fg(COLOR_KEY).bold()),
+        Span::styled(" cancel", Style::default().fg(COLOR_MUTED)),
+    ]));
+    frame.render_widget(footer, chunks[2]);
 }
 
 // ============================================================================

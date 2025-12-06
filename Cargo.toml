@@ -12,6 +12,9 @@ crossterm = "0.28"
 # Google Cloud Secret Manager
 google-cloud-secretmanager-v1 = "1.1"
 
+# Google Cloud Resource Manager (for listing projects)
+google-cloud-resourcemanager-v3 = "1"
+
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 
