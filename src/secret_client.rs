@@ -4,6 +4,7 @@
 //! It wraps the official Google Cloud Rust SDK.
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use google_cloud_secretmanager_v1::client::SecretManagerService;
 use google_cloud_secretmanager_v1::model::{
     Replication, Secret, SecretPayload, SecretVersion,
@@ -251,6 +252,13 @@ impl SecretClient {
         format!("projects/{}/secrets/{}", self.project_id, secret_name)
     }
 
+    /// Formats a protobuf timestamp as a date string (YYYY-MM-DD).
+    fn format_timestamp(seconds: i64) -> String {
+        DateTime::<Utc>::from_timestamp(seconds, 0)
+            .map(|dt| dt.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "Unknown".to_string())
+    }
+
     /// Converts a Secret proto to our SecretInfo struct.
     fn secret_to_info(&self, secret: &Secret) -> SecretInfo {
         let name = secret.name.clone();
@@ -263,11 +271,7 @@ impl SecretClient {
         let create_time = secret
             .create_time
             .as_ref()
-            .map(|t| format!("{}-{:02}-{:02}",
-                1970 + (t.seconds() / 31536000),
-                ((t.seconds() % 31536000) / 2592000) + 1,
-                ((t.seconds() % 2592000) / 86400) + 1
-            ))
+            .map(|t| Self::format_timestamp(t.seconds()))
             .unwrap_or_else(|| "Unknown".to_string());
 
         let labels: Vec<(String, String)> = secret
@@ -300,11 +304,7 @@ impl SecretClient {
         let create_time = version
             .create_time
             .as_ref()
-            .map(|t| format!("{}-{:02}-{:02}",
-                1970 + (t.seconds() / 31536000),
-                ((t.seconds() % 31536000) / 2592000) + 1,
-                ((t.seconds() % 2592000) / 86400) + 1
-            ))
+            .map(|t| Self::format_timestamp(t.seconds()))
             .unwrap_or_else(|| "Unknown".to_string());
 
         VersionInfo {
