@@ -363,14 +363,18 @@ fn draw_secret_detail(frame: &mut Frame, area: Rect, app: &App) {
         None => return,
     };
 
+    // Calculate info card height based on whether labels exist
+    let has_labels = !secret.labels.is_empty();
+    let info_card_height = if has_labels { 6 } else { 5 };
+
     // Split the area into sections
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(2),   // Back hint
-            Constraint::Length(5),   // Secret info card
-            Constraint::Length(2),   // Versions header
-            Constraint::Min(0),      // Versions list / value display
+            Constraint::Length(2),                // Back hint
+            Constraint::Length(info_card_height), // Secret info card
+            Constraint::Length(2),                // Versions header
+            Constraint::Min(0),                   // Versions list / value display
         ])
         .split(area);
 
@@ -395,7 +399,7 @@ fn draw_secret_detail(frame: &mut Frame, area: Rect, app: &App) {
             Span::styled(" Secret Details ", Style::default().fg(Color::White).bold()),
         ]));
 
-    let info_content = vec![
+    let mut info_content = vec![
         Line::from(vec![
             Span::styled("  Name     ", Style::default().fg(COLOR_MUTED)),
             Span::styled(&secret.short_name, Style::default().fg(Color::White).bold()),
@@ -405,6 +409,22 @@ fn draw_secret_detail(frame: &mut Frame, area: Rect, app: &App) {
             Span::styled(&secret.create_time, Style::default().fg(Color::White)),
         ]),
     ];
+
+    // Add labels row if any exist
+    if has_labels {
+        let mut label_spans = vec![
+            Span::styled("  Labels   ", Style::default().fg(COLOR_MUTED)),
+        ];
+        for (i, (key, value)) in secret.labels.iter().enumerate() {
+            if i > 0 {
+                label_spans.push(Span::styled("  ", Style::default()));
+            }
+            label_spans.push(Span::styled(key, Style::default().fg(COLOR_ACCENT)));
+            label_spans.push(Span::styled("=", Style::default().fg(COLOR_MUTED)));
+            label_spans.push(Span::styled(value, Style::default().fg(Color::White)));
+        }
+        info_content.push(Line::from(label_spans));
+    }
 
     let info = Paragraph::new(info_content).block(info_block);
     frame.render_widget(info, chunks[1]);
