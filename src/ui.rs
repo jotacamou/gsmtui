@@ -13,6 +13,7 @@ use ratatui::{
 };
 
 use crate::app::{App, ConfirmAction, InputMode, View};
+use crate::secret_client::VersionState;
 
 // ============================================================================
 // Color Theme - Vibrant colors throughout the app
@@ -472,11 +473,11 @@ fn draw_versions_list(frame: &mut Frame, area: Rect, app: &App) {
         .map(|(idx, v)| {
             let is_selected = app.versions_state.selected() == Some(idx);
 
-            let (state_icon, state_color) = match v.state.as_str() {
-                s if s.contains("Enabled") => ("", COLOR_SUCCESS),
-                s if s.contains("Disabled") => ("", COLOR_WARNING),
-                s if s.contains("Destroyed") => ("", COLOR_ERROR),
-                _ => ("?", COLOR_MUTED),
+            let (state_icon, state_color) = match v.state {
+                VersionState::Enabled => ("", COLOR_SUCCESS),
+                VersionState::Disabled => ("", COLOR_WARNING),
+                VersionState::Destroyed => ("", COLOR_ERROR),
+                VersionState::Unknown => ("?", COLOR_MUTED),
             };
 
             let base_style = if is_selected {
@@ -486,7 +487,7 @@ fn draw_versions_list(frame: &mut Frame, area: Rect, app: &App) {
             };
 
             let version_str = format!("v{:<4}", v.version);
-            let state_str = v.state.replace("State::", "");
+            let state_str = format!("{:?}", v.state);
             let create_time = v.create_time.clone();
 
             let content = Line::from(vec![

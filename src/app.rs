@@ -8,7 +8,7 @@ use ratatui::widgets::ListState;
 
 use crate::event::Action;
 use crate::project_client::{self, ProjectInfo};
-use crate::secret_client::{SecretClient, SecretInfo, VersionInfo};
+use crate::secret_client::{SecretClient, SecretInfo, VersionInfo, VersionState};
 
 /// The different views/screens in the application.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -687,13 +687,16 @@ impl App {
         if let (Some(secret), Some(idx)) = (&self.current_secret, self.versions_state.selected()) {
             if let Some(version) = self.versions.get(idx) {
                 // Only show for enabled versions (API restriction)
-                if is_version_destroyed(&version.state) {
-                    self.set_status("Cannot access destroyed version - data is permanently gone", true);
-                    return Ok(());
-                }
-                if is_version_disabled(&version.state) {
-                    self.set_status("Version is disabled - press 'e' to enable it first", true);
-                    return Ok(());
+                match version.state {
+                    VersionState::Destroyed => {
+                        self.set_status("Cannot access destroyed version - data is permanently gone", true);
+                        return Ok(());
+                    }
+                    VersionState::Disabled => {
+                        self.set_status("Version is disabled - press 'e' to enable it first", true);
+                        return Ok(());
+                    }
+                    _ => {}
                 }
 
                 let secret_name = secret.short_name.clone();
@@ -718,13 +721,16 @@ impl App {
     async fn copy_secret_value(&mut self) -> Result<()> {
         if let (Some(secret), Some(idx)) = (&self.current_secret, self.versions_state.selected()) {
             if let Some(version) = self.versions.get(idx) {
-                if is_version_destroyed(&version.state) {
-                    self.set_status("Cannot copy destroyed version - data is permanently gone", true);
-                    return Ok(());
-                }
-                if is_version_disabled(&version.state) {
-                    self.set_status("Version is disabled - press 'e' to enable it first", true);
-                    return Ok(());
+                match version.state {
+                    VersionState::Destroyed => {
+                        self.set_status("Cannot copy destroyed version - data is permanently gone", true);
+                        return Ok(());
+                    }
+                    VersionState::Disabled => {
+                        self.set_status("Version is disabled - press 'e' to enable it first", true);
+                        return Ok(());
+                    }
+                    _ => {}
                 }
 
                 let secret_name = secret.short_name.clone();
@@ -762,7 +768,7 @@ impl App {
     async fn enable_selected_version(&mut self) -> Result<()> {
         if let (Some(secret), Some(idx)) = (&self.current_secret, self.versions_state.selected()) {
             if let Some(version) = self.versions.get(idx) {
-                if !is_version_disabled(&version.state) {
+                if version.state != VersionState::Disabled {
                     self.set_status("Can only enable disabled versions", true);
                     return Ok(());
                 }
@@ -789,7 +795,7 @@ impl App {
     async fn disable_selected_version(&mut self) -> Result<()> {
         if let (Some(secret), Some(idx)) = (&self.current_secret, self.versions_state.selected()) {
             if let Some(version) = self.versions.get(idx) {
-                if !is_version_enabled(&version.state) {
+                if version.state != VersionState::Enabled {
                     self.set_status("Can only disable enabled versions", true);
                     return Ok(());
                 }
@@ -841,24 +847,3 @@ impl App {
     }
 }
 
-// ============================================================================
-// Helper Functions for Version State Checks
-// ============================================================================
-
-/// Checks if a version state string indicates the version is enabled.
-/// The state comes from the API as a debug-formatted enum (e.g., "Enabled", "State::Enabled").
-fn is_version_enabled(state: &str) -> bool {
-    let state_lower = state.to_lowercase();
-    state_lower.contains("enabled") && !state_lower.contains("disabled")
-}
-
-/// Checks if a version state string indicates the version is disabled.
-fn is_version_disabled(state: &str) -> bool {
-    state.to_lowercase().contains("disabled")
-}
-
-/// Checks if a version state string indicates the version is destroyed.
-#[allow(dead_code)]
-fn is_version_destroyed(state: &str) -> bool {
-    state.to_lowercase().contains("destroyed")
-}

@@ -23,6 +23,19 @@ pub struct SecretInfo {
     pub labels: Vec<(String, String)>,
 }
 
+/// The state of a secret version.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VersionState {
+    /// Version is active and can be accessed
+    Enabled,
+    /// Version is disabled (can be re-enabled)
+    Disabled,
+    /// Version is permanently destroyed
+    Destroyed,
+    /// Unknown state (fallback)
+    Unknown,
+}
+
 /// Information about a secret version.
 #[derive(Debug, Clone)]
 pub struct VersionInfo {
@@ -30,8 +43,8 @@ pub struct VersionInfo {
     pub name: String,
     /// Version number (e.g., "1", "2", "latest")
     pub version: String,
-    /// State: ENABLED, DISABLED, or DESTROYED
-    pub state: String,
+    /// State of the version
+    pub state: VersionState,
     /// Creation time
     pub create_time: String,
 }
@@ -299,7 +312,18 @@ impl SecretClient {
             .unwrap_or("?")
             .to_string();
 
-        let state = format!("{:?}", version.state);
+        // Convert API state to our enum
+        // The API returns a State enum, we convert based on its debug representation
+        let state_str = format!("{:?}", version.state);
+        let state = if state_str.contains("Enabled") {
+            VersionState::Enabled
+        } else if state_str.contains("Disabled") {
+            VersionState::Disabled
+        } else if state_str.contains("Destroyed") {
+            VersionState::Destroyed
+        } else {
+            VersionState::Unknown
+        };
 
         let create_time = version
             .create_time
