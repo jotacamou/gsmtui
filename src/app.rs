@@ -17,8 +17,6 @@ pub enum View {
     SecretsList,
     /// Details and versions of a specific secret
     SecretDetail,
-    /// Help screen showing keyboard shortcuts
-    Help,
     /// Text input mode (for creating secrets, adding values, etc.)
     Input(InputMode),
     /// Confirmation dialog (for destructive actions)
@@ -129,15 +127,6 @@ impl App {
             available_projects: Vec::new(),
             projects_state: ListState::default(),
         }
-    }
-
-    /// Returns a reference to the Secret Manager client.
-    /// Initializes it if not already done.
-    async fn get_client(&mut self) -> Result<&SecretClient> {
-        if self.client.is_none() {
-            self.client = Some(SecretClient::new(self.project_id.clone()).await?);
-        }
-        Ok(self.client.as_ref().unwrap())
     }
 
     /// Loads the list of secrets from the API.
@@ -262,11 +251,6 @@ impl App {
             View::SecretsList => self.handle_secrets_list_action(action).await,
             View::SecretDetail => self.handle_secret_detail_action(action).await,
             View::ProjectSelector => self.handle_project_selector_action(action).await,
-            View::Help => {
-                // Any key exits help
-                self.go_back();
-                Ok(false)
-            }
             _ => Ok(false),
         }
     }
@@ -826,24 +810,6 @@ impl App {
             text: text.to_string(),
             is_error,
         });
-    }
-
-    pub fn clear_status(&mut self) {
-        self.status = None;
-    }
-
-    /// Returns the currently selected secret (if any).
-    pub fn selected_secret(&self) -> Option<&SecretInfo> {
-        self.secrets_state
-            .selected()
-            .and_then(|idx| self.secrets.get(idx))
-    }
-
-    /// Returns the currently selected version (if any).
-    pub fn selected_version(&self) -> Option<&VersionInfo> {
-        self.versions_state
-            .selected()
-            .and_then(|idx| self.versions.get(idx))
     }
 }
 

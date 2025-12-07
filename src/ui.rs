@@ -66,7 +66,6 @@ pub fn draw(frame: &mut Frame, app: &App) {
     match &app.current_view {
         View::SecretsList => draw_secrets_list(frame, chunks[1], app),
         View::SecretDetail => draw_secret_detail(frame, chunks[1], app),
-        View::Help => draw_help(frame, chunks[1]),
         View::Input(mode) => {
             // Draw the underlying view first
             if let Some(View::SecretsList) = &app.previous_view {
@@ -231,9 +230,6 @@ fn get_commands_for_view(view: &View) -> Vec<(&'static str, &'static str)> {
             ("a", "add"),
             ("e/x", "enable/disable"),
             ("p", "project"),
-        ],
-        View::Help => vec![
-            ("Any key", "close"),
         ],
         View::Input(_) => vec![
             ("Enter", "submit"),
@@ -578,28 +574,8 @@ fn draw_empty_state(frame: &mut Frame, area: Rect, title: &str, action: &str, de
 }
 
 // ============================================================================
-// Help View
+// Help Overlay
 // ============================================================================
-
-/// Draws the full-screen help view.
-fn draw_help(frame: &mut Frame, area: Rect) {
-    let help_text = get_help_text();
-
-    let help = Paragraph::new(help_text)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(COLOR_BORDER))
-                .border_set(symbols::border::ROUNDED)
-                .title(Line::from(vec![
-                    Span::styled(" ", Style::default()),
-                    Span::styled(" Keyboard Shortcuts ", Style::default().fg(Color::White).bold()),
-                ])),
-        )
-        .wrap(Wrap { trim: false });
-
-    frame.render_widget(help, area);
-}
 
 /// Draws a help overlay popup.
 fn draw_help_overlay(frame: &mut Frame) {

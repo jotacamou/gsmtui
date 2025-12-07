@@ -97,20 +97,6 @@ impl SecretClient {
         Ok(secrets)
     }
 
-    /// Gets details for a specific secret.
-    pub async fn get_secret(&self, secret_name: &str) -> Result<SecretInfo> {
-        let name = self.secret_path(secret_name);
-        let secret = self
-            .client
-            .get_secret()
-            .set_name(&name)
-            .send()
-            .await
-            .context("Failed to get secret")?;
-
-        Ok(self.secret_to_info(&secret))
-    }
-
     /// Lists all versions of a secret.
     pub async fn list_versions(&self, secret_name: &str) -> Result<Vec<VersionInfo>> {
         let parent = self.secret_path(secret_name);
