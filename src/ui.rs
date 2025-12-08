@@ -13,7 +13,7 @@ use ratatui::{
 };
 
 use crate::app::{App, ConfirmAction, InputMode, View};
-use crate::secret_client::VersionState;
+use crate::secret_client::{ReplicationPolicy, VersionState};
 
 // ============================================================================
 // Color Theme - Vibrant colors throughout the app
@@ -363,9 +363,15 @@ fn draw_secret_detail(frame: &mut Frame, area: Rect, app: &App) {
         None => return,
     };
 
-    // Calculate info card height based on whether labels exist
-    let has_labels = !secret.labels.is_empty();
-    let info_card_height = if has_labels { 6 } else { 5 };
+    // Calculate info card height dynamically based on content
+    let mut extra_rows = 0;
+    if !secret.labels.is_empty() { extra_rows += 1; }
+    if !secret.annotations.is_empty() { extra_rows += 1; }
+    if !secret.topics.is_empty() { extra_rows += 1; }
+    if !secret.version_aliases.is_empty() { extra_rows += 1; }
+    if secret.rotation.is_some() { extra_rows += 1; }
+    if secret.version_destroy_ttl.is_some() { extra_rows += 1; }
+    let info_card_height = 5 + extra_rows; // Base: name, created, replication + borders
 
     // Split the area into sections
     let chunks = Layout::default()
@@ -399,21 +405,35 @@ fn draw_secret_detail(frame: &mut Frame, area: Rect, app: &App) {
             Span::styled(" Secret Details ", Style::default().fg(Color::White).bold()),
         ]));
 
+    // Replication display
+    let replication_str = match &secret.replication {
+        ReplicationPolicy::Automatic => "Automatic".to_string(),
+        ReplicationPolicy::UserManaged(locations) => {
+            if locations.is_empty() {
+                "User-managed".to_string()
+            } else {
+                format!("User-managed ({})", locations.join(", "))
+            }
+        }
+    };
+
     let mut info_content = vec![
         Line::from(vec![
-            Span::styled("  Name     ", Style::default().fg(COLOR_MUTED)),
+            Span::styled("  Name        ", Style::default().fg(COLOR_MUTED)),
             Span::styled(&secret.short_name, Style::default().fg(Color::White).bold()),
         ]),
         Line::from(vec![
-            Span::styled("  Created  ", Style::default().fg(COLOR_MUTED)),
+            Span::styled("  Created     ", Style::default().fg(COLOR_MUTED)),
             Span::styled(&secret.create_time, Style::default().fg(Color::White)),
+            Span::styled("    Replication  ", Style::default().fg(COLOR_MUTED)),
+            Span::styled(&replication_str, Style::default().fg(COLOR_SECONDARY)),
         ]),
     ];
 
     // Add labels row if any exist
-    if has_labels {
+    if !secret.labels.is_empty() {
         let mut label_spans = vec![
-            Span::styled("  Labels   ", Style::default().fg(COLOR_MUTED)),
+            Span::styled("  Labels      ", Style::default().fg(COLOR_MUTED)),
         ];
         for (i, (key, value)) in secret.labels.iter().enumerate() {
             if i > 0 {
@@ -424,6 +444,72 @@ fn draw_secret_detail(frame: &mut Frame, area: Rect, app: &App) {
             label_spans.push(Span::styled(value, Style::default().fg(Color::White)));
         }
         info_content.push(Line::from(label_spans));
+    }
+
+    // Add annotations row if any exist
+    if !secret.annotations.is_empty() {
+        let mut spans = vec![
+            Span::styled("  Annotations ", Style::default().fg(COLOR_MUTED)),
+        ];
+        for (i, (key, value)) in secret.annotations.iter().enumerate() {
+            if i > 0 {
+                spans.push(Span::styled("  ", Style::default()));
+            }
+            spans.push(Span::styled(key, Style::default().fg(COLOR_WARNING)));
+            spans.push(Span::styled("=", Style::default().fg(COLOR_MUTED)));
+            spans.push(Span::styled(value, Style::default().fg(Color::White)));
+        }
+        info_content.push(Line::from(spans));
+    }
+
+    // Add topics row if any exist
+    if !secret.topics.is_empty() {
+        let topics_str = secret.topics.join(", ");
+        info_content.push(Line::from(vec![
+            Span::styled("  Pub/Sub     ", Style::default().fg(COLOR_MUTED)),
+            Span::styled(topics_str, Style::default().fg(Color::White)),
+        ]));
+    }
+
+    // Add version aliases if any exist
+    if !secret.version_aliases.is_empty() {
+        let mut spans = vec![
+            Span::styled("  Aliases     ", Style::default().fg(COLOR_MUTED)),
+        ];
+        for (i, (alias, version)) in secret.version_aliases.iter().enumerate() {
+            if i > 0 {
+                spans.push(Span::styled("  ", Style::default()));
+            }
+            spans.push(Span::styled(alias, Style::default().fg(COLOR_KEY)));
+            spans.push(Span::styled("→v", Style::default().fg(COLOR_MUTED)));
+            spans.push(Span::styled(version.to_string(), Style::default().fg(Color::White)));
+        }
+        info_content.push(Line::from(spans));
+    }
+
+    // Add rotation config if present
+    if let Some(rotation) = &secret.rotation {
+        let mut spans = vec![
+            Span::styled("  Rotation    ", Style::default().fg(COLOR_MUTED)),
+        ];
+        if let Some(period) = &rotation.rotation_period {
+            spans.push(Span::styled("every ", Style::default().fg(Color::White)));
+            spans.push(Span::styled(period, Style::default().fg(COLOR_SECONDARY)));
+        }
+        if let Some(next) = &rotation.next_rotation_time {
+            spans.push(Span::styled("  next: ", Style::default().fg(COLOR_MUTED)));
+            spans.push(Span::styled(next, Style::default().fg(Color::White)));
+        }
+        info_content.push(Line::from(spans));
+    }
+
+    // Add version destroy TTL if set
+    if let Some(ttl) = &secret.version_destroy_ttl {
+        info_content.push(Line::from(vec![
+            Span::styled("  Destroy TTL ", Style::default().fg(COLOR_MUTED)),
+            Span::styled(ttl, Style::default().fg(COLOR_WARNING)),
+            Span::styled(" (delayed destruction)", Style::default().fg(COLOR_MUTED)),
+        ]));
     }
 
     let info = Paragraph::new(info_content).block(info_block);
@@ -503,19 +589,40 @@ fn draw_versions_list(frame: &mut Frame, area: Rect, app: &App) {
             };
 
             let version_str = format!("v{:<4}", v.version);
-            let state_str = format!("{:?}", v.state);
+            let state_str = v.state.to_string();
             let create_time = v.create_time.clone();
 
-            let content = Line::from(vec![
+            let mut spans = vec![
                 Span::styled(if is_selected { "  " } else { "   " }, base_style),
                 Span::styled(state_icon, Style::default().fg(state_color)),
                 Span::styled(" ", base_style),
                 Span::styled(version_str, base_style.add_modifier(Modifier::BOLD)),
                 Span::styled("  ", base_style),
-                Span::styled(state_str, base_style.fg(if is_selected { COLOR_SELECTION_TEXT } else { state_color })),
+                Span::styled(format!("{:<10}", state_str), base_style.fg(if is_selected { COLOR_SELECTION_TEXT } else { state_color })),
                 Span::styled("  ", base_style),
-                Span::styled(create_time, base_style.fg(if is_selected { COLOR_SELECTION_TEXT } else { COLOR_MUTED })),
-            ]);
+                Span::styled(format!("created {}", create_time), base_style.fg(if is_selected { COLOR_SELECTION_TEXT } else { COLOR_MUTED })),
+            ];
+
+            // Add destroy time if destroyed
+            if let Some(destroy_time) = &v.destroy_time {
+                spans.push(Span::styled("  destroyed ", base_style.fg(if is_selected { COLOR_SELECTION_TEXT } else { COLOR_ERROR })));
+                spans.push(Span::styled(destroy_time, base_style.fg(if is_selected { COLOR_SELECTION_TEXT } else { COLOR_MUTED })));
+            }
+
+            // Add scheduled destroy time if pending destruction
+            if let Some(scheduled) = &v.scheduled_destroy_time {
+                spans.push(Span::styled("  ", base_style));
+                spans.push(Span::styled("", Style::default().fg(COLOR_WARNING)));
+                spans.push(Span::styled(format!(" destroys {}", scheduled), base_style.fg(if is_selected { COLOR_SELECTION_TEXT } else { COLOR_WARNING })));
+            }
+
+            // Add checksum indicator
+            if v.has_checksum {
+                spans.push(Span::styled("  ", base_style));
+                spans.push(Span::styled("", Style::default().fg(COLOR_SECONDARY)));
+            }
+
+            let content = Line::from(spans);
 
             ListItem::new(content).style(base_style)
         })

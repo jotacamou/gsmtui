@@ -7,20 +7,48 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use google_cloud_secretmanager_v1::client::SecretManagerService;
 use google_cloud_secretmanager_v1::model::{
-    Replication, Secret, SecretPayload, SecretVersion,
+    replication, secret_version, Replication, Secret, SecretPayload, SecretVersion,
 };
+
+/// Replication policy for a secret.
+#[derive(Debug, Clone)]
+pub enum ReplicationPolicy {
+    /// Google manages replication automatically
+    Automatic,
+    /// User-managed replication with specific locations
+    UserManaged(Vec<String>),
+}
+
+/// Rotation configuration for a secret.
+#[derive(Debug, Clone)]
+pub struct RotationConfig {
+    /// Rotation period (e.g., "86400s" for 1 day)
+    pub rotation_period: Option<String>,
+    /// Next rotation time
+    pub next_rotation_time: Option<String>,
+}
 
 /// Information about a secret (simplified view).
 #[derive(Debug, Clone)]
 pub struct SecretInfo {
-    /// Full resource name (e.g., "projects/my-project/secrets/my-secret")
-    pub name: String,
     /// Short name (just the secret name without the full path)
     pub short_name: String,
     /// Creation time as a string
     pub create_time: String,
     /// Labels/tags on the secret
     pub labels: Vec<(String, String)>,
+    /// Annotations (custom metadata)
+    pub annotations: Vec<(String, String)>,
+    /// Replication policy
+    pub replication: ReplicationPolicy,
+    /// Pub/Sub topics for notifications
+    pub topics: Vec<String>,
+    /// Version aliases (alias -> version number)
+    pub version_aliases: Vec<(String, i64)>,
+    /// Rotation configuration
+    pub rotation: Option<RotationConfig>,
+    /// Version destroy TTL (delayed destruction)
+    pub version_destroy_ttl: Option<String>,
 }
 
 /// The state of a secret version.
@@ -36,17 +64,32 @@ pub enum VersionState {
     Unknown,
 }
 
+impl std::fmt::Display for VersionState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Enabled => write!(f, "Enabled"),
+            Self::Disabled => write!(f, "Disabled"),
+            Self::Destroyed => write!(f, "Destroyed"),
+            Self::Unknown => write!(f, "Unknown"),
+        }
+    }
+}
+
 /// Information about a secret version.
 #[derive(Debug, Clone)]
 pub struct VersionInfo {
-    /// Full resource name
-    pub name: String,
     /// Version number (e.g., "1", "2", "latest")
     pub version: String,
     /// State of the version
     pub state: VersionState,
     /// Creation time
     pub create_time: String,
+    /// Time when the version was destroyed (if applicable)
+    pub destroy_time: Option<String>,
+    /// Scheduled destruction time (for delayed destroy)
+    pub scheduled_destroy_time: Option<String>,
+    /// Whether a client-specified checksum was provided
+    pub has_checksum: bool,
 }
 
 /// Wrapper around the Google Cloud Secret Manager client.
@@ -260,11 +303,11 @@ impl SecretClient {
 
     /// Converts a Secret proto to our SecretInfo struct.
     fn secret_to_info(&self, secret: &Secret) -> SecretInfo {
-        let name = secret.name.clone();
-        let short_name = name
+        let short_name = secret
+            .name
             .rsplit('/')
             .next()
-            .unwrap_or(&name)
+            .unwrap_or(&secret.name)
             .to_string();
 
         let create_time = secret
@@ -279,36 +322,95 @@ impl SecretClient {
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
 
+        let annotations: Vec<(String, String)> = secret
+            .annotations
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+
+        // Parse replication policy
+        let replication = match &secret.replication {
+            Some(r) => match &r.replication {
+                Some(replication::Replication::UserManaged(um)) => {
+                    let locations: Vec<String> = um
+                        .replicas
+                        .iter()
+                        .map(|replica| replica.location.clone())
+                        .collect();
+                    ReplicationPolicy::UserManaged(locations)
+                }
+                _ => ReplicationPolicy::Automatic,
+            },
+            None => ReplicationPolicy::Automatic,
+        };
+
+        // Extract Pub/Sub topics
+        let topics: Vec<String> = secret
+            .topics
+            .iter()
+            .map(|t| t.name.clone())
+            .collect();
+
+        // Extract version aliases
+        let version_aliases: Vec<(String, i64)> = secret
+            .version_aliases
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+
+        // Parse rotation config
+        let rotation = secret.rotation.as_ref().map(|r| {
+            RotationConfig {
+                rotation_period: r.rotation_period.as_ref().map(|d| {
+                    format!("{}s", d.seconds())
+                }),
+                next_rotation_time: r.next_rotation_time.as_ref().map(|t| {
+                    Self::format_timestamp(t.seconds())
+                }),
+            }
+        });
+
+        // Parse version destroy TTL
+        let version_destroy_ttl = secret.version_destroy_ttl.as_ref().map(|d| {
+            let secs = d.seconds();
+            if secs >= 86400 {
+                format!("{}d", secs / 86400)
+            } else if secs >= 3600 {
+                format!("{}h", secs / 3600)
+            } else {
+                format!("{}s", secs)
+            }
+        });
+
         SecretInfo {
-            name,
             short_name,
             create_time,
             labels,
+            annotations,
+            replication,
+            topics,
+            version_aliases,
+            rotation,
+            version_destroy_ttl,
         }
     }
 
     /// Converts a SecretVersion proto to our VersionInfo struct.
     fn version_to_info(&self, version: &SecretVersion) -> VersionInfo {
-        let name = version.name.clone();
-
         // Extract version number from name (e.g., ".../versions/1" -> "1")
-        let version_num = name
+        let version_num = version
+            .name
             .rsplit('/')
             .next()
             .unwrap_or("?")
             .to_string();
 
         // Convert API state to our enum
-        // The API returns a State enum, we convert based on its debug representation
-        let state_str = format!("{:?}", version.state);
-        let state = if state_str.contains("Enabled") {
-            VersionState::Enabled
-        } else if state_str.contains("Disabled") {
-            VersionState::Disabled
-        } else if state_str.contains("Destroyed") {
-            VersionState::Destroyed
-        } else {
-            VersionState::Unknown
+        let state = match version.state {
+            secret_version::State::Enabled => VersionState::Enabled,
+            secret_version::State::Disabled => VersionState::Disabled,
+            secret_version::State::Destroyed => VersionState::Destroyed,
+            _ => VersionState::Unknown,
         };
 
         let create_time = version
@@ -317,11 +419,23 @@ impl SecretClient {
             .map(|t| Self::format_timestamp(t.seconds()))
             .unwrap_or_else(|| "Unknown".to_string());
 
+        let destroy_time = version
+            .destroy_time
+            .as_ref()
+            .map(|t| Self::format_timestamp(t.seconds()));
+
+        let scheduled_destroy_time = version
+            .scheduled_destroy_time
+            .as_ref()
+            .map(|t| Self::format_timestamp(t.seconds()));
+
         VersionInfo {
-            name,
             version: version_num,
             state,
             create_time,
+            destroy_time,
+            scheduled_destroy_time,
+            has_checksum: version.client_specified_payload_checksum,
         }
     }
 }
