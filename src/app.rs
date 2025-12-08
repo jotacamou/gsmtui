@@ -13,6 +13,8 @@ use crate::secret_client::{SecretClient, SecretInfo, VersionInfo, VersionState};
 /// The different views/screens in the application.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum View {
+    /// Authentication required - credentials not found
+    AuthRequired,
     /// List of all secrets in the project
     SecretsList,
     /// Details and versions of a specific secret
@@ -130,14 +132,23 @@ impl App {
     }
 
     /// Loads the list of secrets from the API.
+    /// If loading fails (likely auth issue), switches to AuthRequired view.
     pub async fn load_secrets(&mut self) -> Result<()> {
         self.is_loading = true;
         self.set_status("Loading secrets...", false);
 
-        // We need to work around the borrow checker here
+        // Initialize client if needed
         let project_id = self.project_id.clone();
         if self.client.is_none() {
-            self.client = Some(SecretClient::new(project_id).await?);
+            match SecretClient::new(project_id).await {
+                Ok(c) => self.client = Some(c),
+                Err(e) => {
+                    self.set_status(&format!("Auth error: {}", e), true);
+                    self.current_view = View::AuthRequired;
+                    self.is_loading = false;
+                    return Ok(());
+                }
+            }
         }
 
         match self.client.as_ref().unwrap().list_secrets().await {
@@ -151,7 +162,8 @@ impl App {
                 self.set_status(&format!("Loaded {} secrets", count), false);
             }
             Err(e) => {
-                self.set_status(&format!("Error loading secrets: {}", e), true);
+                self.set_status(&format!("Auth error: {}", e), true);
+                self.current_view = View::AuthRequired;
             }
         }
 
@@ -162,6 +174,7 @@ impl App {
     /// Loads the list of available projects from the API.
     ///
     /// Used when starting without a project or when opening the project selector.
+    /// If loading fails (likely auth issue), switches to AuthRequired view.
     pub async fn load_projects(&mut self) -> Result<()> {
         self.is_loading = true;
         self.set_status("Loading projects...", false);
@@ -185,7 +198,9 @@ impl App {
                 self.set_status(&format!("Found {} projects", count), false);
             }
             Err(e) => {
-                self.set_status(&format!("Failed to load projects: {}", e), true);
+                // Loading failed - likely an auth issue, switch to auth view
+                self.set_status(&format!("Auth error: {}", e), true);
+                self.current_view = View::AuthRequired;
             }
         }
 
@@ -248,11 +263,65 @@ impl App {
 
         // Handle based on current view
         match self.current_view {
+            View::AuthRequired => self.handle_auth_required_action(action).await,
             View::SecretsList => self.handle_secrets_list_action(action).await,
             View::SecretDetail => self.handle_secret_detail_action(action).await,
             View::ProjectSelector => self.handle_project_selector_action(action).await,
             _ => Ok(false),
         }
+    }
+
+    /// Handles actions in the auth required view.
+    async fn handle_auth_required_action(&mut self, action: Action) -> Result<bool> {
+        match action {
+            Action::Quit => return Ok(true),
+            Action::Enter => {
+                // Launch gcloud auth in the terminal
+                self.run_gcloud_auth().await?;
+            }
+            _ => {}
+        }
+        Ok(false)
+    }
+
+    /// Runs gcloud auth and checks if credentials are now available.
+    async fn run_gcloud_auth(&mut self) -> Result<()> {
+        use std::io::stdout;
+        use std::process::Command;
+        use crossterm::{
+            execute,
+            terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+        };
+
+        // Exit TUI mode to let gcloud use the terminal
+        let _ = disable_raw_mode();
+        let _ = execute!(stdout(), LeaveAlternateScreen);
+
+        // Run gcloud auth - this will open a browser
+        let result = Command::new("gcloud")
+            .args(["auth", "application-default", "login"])
+            .status();
+
+        // Re-enter TUI mode
+        let _ = enable_raw_mode();
+        let _ = execute!(stdout(), EnterAlternateScreen);
+
+        match result {
+            Ok(status) if status.success() => {
+                self.set_status("Authentication successful!", false);
+                // Switch to project selector
+                self.current_view = View::ProjectSelector;
+                self.load_projects().await?;
+            }
+            Ok(_) => {
+                self.set_status("Authentication was cancelled or failed", true);
+            }
+            Err(e) => {
+                self.set_status(&format!("Failed to run gcloud: {}", e), true);
+            }
+        }
+
+        Ok(())
     }
 
     /// Handles actions in the secrets list view.

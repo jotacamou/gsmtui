@@ -64,6 +64,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
     // Draw the main content based on current view
     match &app.current_view {
+        View::AuthRequired => draw_auth_required(frame, chunks[1]),
         View::SecretsList => draw_secrets_list(frame, chunks[1], app),
         View::SecretDetail => draw_secret_detail(frame, chunks[1], app),
         View::Input(mode) => {
@@ -208,6 +209,10 @@ fn draw_commands_bar(frame: &mut Frame, area: Rect, app: &App) {
 /// Returns the list of commands available for a given view.
 fn get_commands_for_view(view: &View) -> Vec<(&'static str, &'static str)> {
     match view {
+        View::AuthRequired => vec![
+            ("Enter", "authenticate"),
+            ("q", "quit"),
+        ],
         View::SecretsList => vec![
             ("j/k", "navigate"),
             ("Enter", "view"),
@@ -261,6 +266,72 @@ fn draw_status_bar(frame: &mut Frame, area: Rect, app: &App) {
 
     let status = Paragraph::new(text).style(style);
     frame.render_widget(status, area);
+}
+
+// ============================================================================
+// Auth Required View
+// ============================================================================
+
+/// Draws the authentication required screen.
+fn draw_auth_required(frame: &mut Frame, area: Rect) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(COLOR_WARNING))
+        .border_set(symbols::border::ROUNDED)
+        .title(Line::from(vec![
+            Span::styled(" ", Style::default()),
+            Span::styled("", Style::default().fg(COLOR_WARNING)),
+            Span::styled(" Authentication Required ", Style::default().fg(COLOR_WARNING).bold()),
+        ]));
+
+    let content = vec![
+        Line::from(""),
+        Line::from(""),
+        Line::from(Span::styled("", Style::default().fg(COLOR_WARNING))),
+        Line::from(""),
+        Line::from(Span::styled(
+            "GCP credentials not found",
+            Style::default().fg(COLOR_PRIMARY).bold(),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            "To use this app, you need to authenticate with Google Cloud.",
+            Style::default().fg(Color::White),
+        )),
+        Line::from(""),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Press ", Style::default().fg(COLOR_MUTED)),
+            Span::styled("Enter", Style::default().fg(COLOR_KEY).bold()),
+            Span::styled(" to run: ", Style::default().fg(COLOR_MUTED)),
+            Span::styled(
+                "gcloud auth application-default login",
+                Style::default().fg(COLOR_SECONDARY),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "This will open your browser to authenticate.",
+            Style::default().fg(COLOR_MUTED),
+        )),
+        Line::from(Span::styled(
+            "Make sure to check all permission boxes in the consent screen.",
+            Style::default().fg(COLOR_WARNING),
+        )),
+        Line::from(""),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Press ", Style::default().fg(COLOR_MUTED)),
+            Span::styled("q", Style::default().fg(COLOR_KEY).bold()),
+            Span::styled(" to quit", Style::default().fg(COLOR_MUTED)),
+        ]),
+    ];
+
+    let paragraph = Paragraph::new(content)
+        .block(block)
+        .alignment(Alignment::Center);
+
+    frame.render_widget(paragraph, area);
 }
 
 // ============================================================================

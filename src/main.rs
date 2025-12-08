@@ -10,11 +10,32 @@ mod secret_client;
 mod ui;
 
 use std::env;
+use std::path::Path;
 
 use anyhow::{Context, Result};
 
 use crate::app::{App, View};
 use crate::event::EventHandler;
+
+/// Checks if GCP credentials are available.
+///
+/// Looks for:
+/// 1. GOOGLE_APPLICATION_CREDENTIALS environment variable pointing to a file
+/// 2. Default ADC location: ~/.config/gcloud/application_default_credentials.json
+fn has_gcp_credentials() -> bool {
+    // Check $GOOGLE_APPLICATION_CREDENTIALS first
+    if let Ok(path) = env::var("GOOGLE_APPLICATION_CREDENTIALS") {
+        return Path::new(&path).exists();
+    }
+
+    // Check default ADC location
+    if let Ok(home) = env::var("HOME") {
+        let adc_path = format!("{}/.config/gcloud/application_default_credentials.json", home);
+        return Path::new(&adc_path).exists();
+    }
+
+    false
+}
 
 /// Parses command line arguments.
 ///
@@ -101,17 +122,22 @@ async fn main() -> Result<()> {
 /// 3. Update application state
 /// 4. Repeat until the user quits
 async fn run_app(mut terminal: ratatui::DefaultTerminal, mut app: App) -> Result<()> {
-    // Load initial data based on starting view
-    match app.current_view {
-        View::SecretsList => {
-            // Project was provided, load secrets
-            app.load_secrets().await?;
+    // Check credentials before loading anything
+    if !has_gcp_credentials() {
+        app.current_view = View::AuthRequired;
+    } else {
+        // Load initial data based on starting view
+        match app.current_view {
+            View::SecretsList => {
+                // Project was provided, load secrets
+                app.load_secrets().await?;
+            }
+            View::ProjectSelector => {
+                // No project provided, load projects for selection
+                app.load_projects().await?;
+            }
+            _ => {}
         }
-        View::ProjectSelector => {
-            // No project provided, load projects for selection
-            app.load_projects().await?;
-        }
-        _ => {}
     }
 
     // Create the event handler
