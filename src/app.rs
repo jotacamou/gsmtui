@@ -45,6 +45,15 @@ pub enum ConfirmAction {
     DestroyVersion(String, String),
 }
 
+/// Actions that need to be handled by the main loop.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppAction {
+    /// Quit the application
+    Quit,
+    /// Run gcloud auth (needs terminal access)
+    RunGcloudAuth,
+}
+
 /// Status message to display to the user.
 #[derive(Debug, Clone)]
 pub struct StatusMessage {
@@ -237,18 +246,18 @@ impl App {
         Ok(())
     }
 
-    /// Handles an action and returns true if the app should quit.
-    pub async fn handle_event(&mut self, action: Action) -> Result<bool> {
+    /// Handles an action and returns an AppAction if one is needed.
+    pub async fn handle_event(&mut self, action: Action) -> Result<Option<AppAction>> {
         // Handle help toggle from any view
         if action == Action::Help {
             self.show_help = !self.show_help;
-            return Ok(false);
+            return Ok(None);
         }
 
         // If help is showing, any key closes it
         if self.show_help {
             self.show_help = false;
-            return Ok(false);
+            return Ok(None);
         }
 
         // Handle confirmation dialogs
@@ -263,71 +272,43 @@ impl App {
 
         // Handle based on current view
         match self.current_view {
-            View::AuthRequired => self.handle_auth_required_action(action).await,
+            View::AuthRequired => self.handle_auth_required_action(action),
             View::SecretsList => self.handle_secrets_list_action(action).await,
             View::SecretDetail => self.handle_secret_detail_action(action).await,
             View::ProjectSelector => self.handle_project_selector_action(action).await,
-            _ => Ok(false),
+            _ => Ok(None),
         }
     }
 
     /// Handles actions in the auth required view.
-    async fn handle_auth_required_action(&mut self, action: Action) -> Result<bool> {
+    fn handle_auth_required_action(&mut self, action: Action) -> Result<Option<AppAction>> {
         match action {
-            Action::Quit => return Ok(true),
-            Action::Enter => {
-                // Launch gcloud auth in the terminal
-                self.run_gcloud_auth().await?;
-            }
-            _ => {}
+            Action::Quit => Ok(Some(AppAction::Quit)),
+            Action::Enter => Ok(Some(AppAction::RunGcloudAuth)),
+            _ => Ok(None),
         }
-        Ok(false)
     }
 
-    /// Runs gcloud auth and checks if credentials are now available.
-    async fn run_gcloud_auth(&mut self) -> Result<()> {
-        use std::io::stdout;
-        use std::process::Command;
-        use crossterm::{
-            execute,
-            terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-        };
+    /// Called after successful gcloud auth to load projects.
+    pub async fn on_auth_success(&mut self) -> Result<()> {
+        self.set_status("Authentication successful!", false);
+        self.current_view = View::ProjectSelector;
+        self.load_projects().await
+    }
 
-        // Exit TUI mode to let gcloud use the terminal
-        let _ = disable_raw_mode();
-        let _ = execute!(stdout(), LeaveAlternateScreen);
-
-        // Run gcloud auth - this will open a browser
-        let result = Command::new("gcloud")
-            .args(["auth", "application-default", "login"])
-            .status();
-
-        // Re-enter TUI mode
-        let _ = enable_raw_mode();
-        let _ = execute!(stdout(), EnterAlternateScreen);
-
-        match result {
-            Ok(status) if status.success() => {
-                self.set_status("Authentication successful!", false);
-                // Switch to project selector
-                self.current_view = View::ProjectSelector;
-                self.load_projects().await?;
-            }
-            Ok(_) => {
-                self.set_status("Authentication was cancelled or failed", true);
-            }
-            Err(e) => {
-                self.set_status(&format!("Failed to run gcloud: {}", e), true);
-            }
+    /// Called when gcloud auth fails.
+    pub fn on_auth_failure(&mut self, error: Option<&str>) {
+        if let Some(e) = error {
+            self.set_status(&format!("Failed to run gcloud: {}", e), true);
+        } else {
+            self.set_status("Authentication was cancelled or failed", true);
         }
-
-        Ok(())
     }
 
     /// Handles actions in the secrets list view.
-    async fn handle_secrets_list_action(&mut self, action: Action) -> Result<bool> {
+    async fn handle_secrets_list_action(&mut self, action: Action) -> Result<Option<AppAction>> {
         match action {
-            Action::Quit => return Ok(true),
+            Action::Quit => return Ok(Some(AppAction::Quit)),
             Action::Up => self.select_previous_secret(),
             Action::Down => self.select_next_secret(),
             Action::Top => self.select_first_secret(),
@@ -339,13 +320,13 @@ impl App {
             Action::OpenProjectSelector => self.open_project_selector().await?,
             _ => {}
         }
-        Ok(false)
+        Ok(None)
     }
 
     /// Handles actions in the project selector view.
-    async fn handle_project_selector_action(&mut self, action: Action) -> Result<bool> {
+    async fn handle_project_selector_action(&mut self, action: Action) -> Result<Option<AppAction>> {
         match action {
-            Action::Quit => return Ok(true),
+            Action::Quit => return Ok(Some(AppAction::Quit)),
             Action::Back => self.go_back(),
             Action::Up => self.select_previous_project(),
             Action::Down => self.select_next_project(),
@@ -354,13 +335,13 @@ impl App {
             Action::Enter => self.select_project().await?,
             _ => {}
         }
-        Ok(false)
+        Ok(None)
     }
 
     /// Handles actions in the secret detail view.
-    async fn handle_secret_detail_action(&mut self, action: Action) -> Result<bool> {
+    async fn handle_secret_detail_action(&mut self, action: Action) -> Result<Option<AppAction>> {
         match action {
-            Action::Quit => return Ok(true),
+            Action::Quit => return Ok(Some(AppAction::Quit)),
             Action::Back => self.go_back(),
             Action::Up => self.select_previous_version(),
             Action::Down => self.select_next_version(),
@@ -376,13 +357,13 @@ impl App {
             Action::OpenProjectSelector => self.open_project_selector().await?,
             _ => {}
         }
-        Ok(false)
+        Ok(None)
     }
 
     /// Handles actions during text input.
-    async fn handle_input_action(&mut self, action: Action, mode: InputMode) -> Result<bool> {
+    async fn handle_input_action(&mut self, action: Action, mode: InputMode) -> Result<Option<AppAction>> {
         match action {
-            Action::Quit => return Ok(true),
+            Action::Quit => return Ok(Some(AppAction::Quit)),
             Action::Back => {
                 self.input_buffer.clear();
                 self.go_back();
@@ -398,11 +379,11 @@ impl App {
             }
             _ => {}
         }
-        Ok(false)
+        Ok(None)
     }
 
     /// Handles actions in confirmation dialogs.
-    async fn handle_confirm_action(&mut self, action: Action, confirm: ConfirmAction) -> Result<bool> {
+    async fn handle_confirm_action(&mut self, action: Action, confirm: ConfirmAction) -> Result<Option<AppAction>> {
         match action {
             Action::Enter => {
                 // User confirmed the action
@@ -414,7 +395,7 @@ impl App {
             }
             _ => {}
         }
-        Ok(false)
+        Ok(None)
     }
 
     // --- Navigation helpers ---

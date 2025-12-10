@@ -14,7 +14,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
-use crate::app::{App, View};
+use crate::app::{App, AppAction, View};
 use crate::event::EventHandler;
 
 /// Checks if GCP credentials are available.
@@ -159,12 +159,57 @@ async fn run_app(mut terminal: ratatui::DefaultTerminal, mut app: App) -> Result
 
         // Handle events (keyboard input, etc.)
         if let Some(action) = event {
-            // Process the event and check if we should quit
-            if app.handle_event(action).await? {
-                break;
+            // Process the event and check what action is needed
+            match app.handle_event(action).await? {
+                Some(AppAction::Quit) => break,
+                Some(AppAction::RunGcloudAuth) => {
+                    drop(terminal);
+                    terminal = run_gcloud_auth(&mut app).await?;
+                }
+                None => {}
             }
         }
     }
 
     Ok(())
+}
+
+/// Runs gcloud auth with proper terminal management.
+///
+/// This function:
+/// 1. Restores the terminal to normal mode
+/// 2. Runs the gcloud auth subprocess
+/// 3. Reinitializes the terminal for TUI mode
+/// 4. Clears ratatui's buffers to force a full redraw
+async fn run_gcloud_auth(app: &mut App) -> Result<ratatui::DefaultTerminal> {
+    use std::process::Command;
+
+    // Restore terminal to normal mode
+    ratatui::restore();
+
+    // Run gcloud auth - this will open a browser
+    let result = Command::new("gcloud")
+        .args(["auth", "application-default", "login"])
+        .status();
+
+    // Reinitialize terminal for TUI mode
+    let mut terminal = ratatui::init();
+
+    // Clear ratatui's internal buffers to force a full redraw
+    terminal.clear().context("Failed to clear terminal")?;
+
+    // Handle the result
+    match result {
+        Ok(status) if status.success() => {
+            app.on_auth_success().await?;
+        }
+        Ok(_) => {
+            app.on_auth_failure(None);
+        }
+        Err(e) => {
+            app.on_auth_failure(Some(&e.to_string()));
+        }
+    }
+
+    Ok(terminal)
 }
