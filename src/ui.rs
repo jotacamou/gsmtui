@@ -52,7 +52,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(7),  // Header (ASCII art + subtitle + project)
+            Constraint::Length(6),  // Header (ASCII art + info panel)
             Constraint::Min(0),     // Main content
             Constraint::Length(3),  // Commands bar
             Constraint::Length(1),  // Status bar
@@ -111,25 +111,21 @@ pub fn draw(frame: &mut Frame, app: &App) {
 // Header - ASCII Art with Gradient
 // ============================================================================
 
-// Rainbow colors for the ASCII art (8-color spectrum)
-const RAINBOW: [Color; 8] = [
-    Color::Rgb(255, 107, 107),  // Red
-    Color::Rgb(255, 159, 67),   // Orange
-    Color::Rgb(255, 212, 59),   // Yellow
-    Color::Rgb(72, 219, 128),   // Green
-    Color::Rgb(56, 189, 248),   // Cyan
-    Color::Rgb(99, 143, 255),   // Blue
-    Color::Rgb(168, 85, 247),   // Purple
-    Color::Rgb(236, 72, 153),   // Pink
+// Cyberpunk colors for the ASCII art gradient
+const LOGO_COLORS: [Color; 4] = [
+    Color::Rgb(56, 189, 248),   // Cyan (matches COLOR_PRIMARY)
+    Color::Rgb(244, 114, 182),  // Pink (matches COLOR_KEY)
+    Color::Rgb(192, 132, 252),  // Purple (matches COLOR_ACCENT)
+    Color::Rgb(52, 211, 153),   // Emerald (matches COLOR_SECONDARY)
 ];
 
-/// Creates a line with rainbow-colored characters.
-fn rainbow_line(text: &str, offset: usize) -> Line<'static> {
+/// Creates a line with colored characters.
+fn colored_line(text: &str, offset: usize) -> Line<'static> {
     let spans: Vec<Span> = text
         .chars()
         .enumerate()
         .map(|(i, c)| {
-            let color = RAINBOW[(i + offset) % RAINBOW.len()];
+            let color = LOGO_COLORS[(i + offset) % LOGO_COLORS.len()];
             Span::styled(c.to_string(), Style::default().fg(color).bold())
         })
         .collect();
@@ -138,42 +134,119 @@ fn rainbow_line(text: &str, offset: usize) -> Line<'static> {
 
 /// Draws the header with ASCII art logo and subtitle.
 fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
-    let loading = if app.is_loading {
-        Span::styled(" Loading...", Style::default().fg(COLOR_WARNING).add_modifier(Modifier::SLOW_BLINK))
+    let border_style = Style::default().fg(COLOR_BORDER);
+    let dim_style = Style::default().fg(Color::Rgb(55, 65, 81));
+    let muted_style = Style::default().fg(Color::Rgb(75, 85, 99));
+
+    // Status indicator
+    let status = if app.is_loading {
+        vec![
+            Span::styled("┃", border_style),
+            Span::styled(" ◈ ", Style::default().fg(COLOR_WARNING).add_modifier(Modifier::SLOW_BLINK)),
+            Span::styled("SYNC", Style::default().fg(COLOR_WARNING).bold()),
+            Span::styled(" ┃", border_style),
+        ]
     } else {
-        Span::raw("")
+        vec![
+            Span::styled("┃", border_style),
+            Span::styled(" ◈ ", Style::default().fg(COLOR_SUCCESS)),
+            Span::styled("Google Cloud", Style::default().fg(COLOR_SUCCESS).bold()),
+            Span::styled(" ┃", border_style),
+        ]
     };
 
-    // ASCII art lines with rainbow coloring (character by character)
-    // ┏━╸┏━┓┏┳┓   ╺┳╸╻ ╻╻
-    // ┃╺┓┗━┓┃┃┃    ┃ ┃ ┃┃
-    // ┗━┛┗━┛╹ ╹    ╹ ┗━┛╹
+    // Top border with status indicator
+    let line0 = Line::from(vec![
+        Span::styled("┏", Style::default().fg(COLOR_ACCENT)),
+        Span::styled("━━━━━━━━━━━━━━━━━━━━━━━", border_style),
+        Span::styled("┓", Style::default().fg(COLOR_PRIMARY)),
+        Span::styled("░▒▓", dim_style),
+        status[0].clone(),
+        status[1].clone(),
+        status[2].clone(),
+        status[3].clone(),
+        Span::styled("▓▒░", dim_style),
+        Span::styled("╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍", dim_style),
+    ]);
 
-    let mut line1 = rainbow_line(" ┏━╸┏━┓┏┳┓   ╺┳╸╻ ╻╻", 0);
-    line1.spans.push(loading.clone());
+    // Logo line 1 + info panel top
+    let mut line1 = Line::from(vec![
+        Span::styled("┃", Style::default().fg(COLOR_ACCENT)),
+        Span::styled(" ", Style::default()),
+    ]);
+    line1.spans.extend(colored_line("▄████ ▄█▀▀▀ ███▄███▄", 0).spans);
+    line1.spans.extend(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled("┃", Style::default().fg(COLOR_PRIMARY)),
+        Span::styled("  ╭───────────────────────────────╮", border_style),
+    ]);
 
-    let line2 = rainbow_line(" ┃╺┓┗━┓┃┃┃    ┃ ┃ ┃┃", 0);
+    // Logo line 2 + SECRET::MANAGER title
+    let mut line2 = Line::from(vec![
+        Span::styled("┃", Style::default().fg(COLOR_ACCENT)),
+        Span::styled(" ", Style::default()),
+    ]);
+    line2.spans.extend(colored_line("██ ██ ▀███▄ ██ ██ ██", 0).spans);
+    line2.spans.extend(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled("┃", Style::default().fg(COLOR_PRIMARY)),
+        Span::styled("  │ ", border_style),
+        Span::styled("◆", Style::default().fg(COLOR_ACCENT)),
+        Span::styled(" SECRET", Style::default().fg(COLOR_PRIMARY).bold()),
+        Span::styled("::", muted_style),
+        Span::styled("MANAGER", Style::default().fg(COLOR_KEY).bold()),
+        Span::styled(" ▸▸ ", muted_style),
+        Span::styled("TUI", Style::default().fg(COLOR_ACCENT).bold()),
+        Span::styled(" ◆    │", border_style),
+    ]);
 
-    let line3 = rainbow_line(" ┗━┛┗━┛╹ ╹    ╹ ┗━┛╹", 0);
+    // Logo line 3 + info tags
+    let mut line3 = Line::from(vec![
+        Span::styled("┃", Style::default().fg(COLOR_ACCENT)),
+        Span::styled(" ", Style::default()),
+    ]);
+    line3.spans.extend(colored_line("▀████ ▄▄▄█▀ ██ ██ ██", 0).spans);
+    line3.spans.extend(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled("┃", Style::default().fg(COLOR_PRIMARY)),
+        Span::styled("  │ ", border_style),
+        Span::styled("▪", Style::default().fg(COLOR_SECONDARY)),
+        Span::styled(" GCP  ", Style::default().fg(COLOR_MUTED)),
+        Span::styled("│", dim_style),
+        Span::styled(" ▪", Style::default().fg(COLOR_SUCCESS)),
+        Span::styled(" SECRETS ", Style::default().fg(COLOR_MUTED)),
+        Span::styled("│", dim_style),
+        Span::styled(" ▪", Style::default().fg(COLOR_WARNING)),
+        Span::styled(" v1.0   │", border_style),
+    ]);
 
+    // Logo line 4 (G tail) + info panel bottom
     let line4 = Line::from(vec![
-        Span::styled(" Google Cloud Secret Manager ", Style::default().fg(COLOR_PRIMARY)),
-        Span::styled("Terminal User Interface", Style::default().fg(COLOR_ACCENT)),
+        Span::styled("┃", Style::default().fg(COLOR_ACCENT)),
+        Span::styled("    ", Style::default()),
+        Span::styled("█", Style::default().fg(LOGO_COLORS[3]).bold()),
+        Span::styled("█", Style::default().fg(LOGO_COLORS[0]).bold()),
+        Span::styled("                 ", Style::default()),
+        Span::styled("┃", Style::default().fg(COLOR_PRIMARY)),
+        Span::styled("  ╰───────────────────────────────╯", border_style),
     ]);
 
+    // Logo line 5 (G base) + project info
     let line5 = Line::from(vec![
-        Span::styled(" Project: ", Style::default().fg(COLOR_MUTED)),
+        Span::styled("┗", Style::default().fg(COLOR_ACCENT)),
+        Span::styled("  ", Style::default()),
+        Span::styled("▀", Style::default().fg(LOGO_COLORS[1]).bold()),
+        Span::styled("▀", Style::default().fg(LOGO_COLORS[2]).bold()),
+        Span::styled("▀", Style::default().fg(LOGO_COLORS[3]).bold()),
+        Span::styled("━━━━━━━━━━━━━━━━━━", border_style),
+        Span::styled("┛", Style::default().fg(COLOR_PRIMARY)),
+        Span::styled("  ╾╢", border_style),
+        Span::styled(" ⬢  ", Style::default().fg(COLOR_SECONDARY)),
         Span::styled(&app.project_id, Style::default().fg(COLOR_SECONDARY).bold()),
+        Span::styled(" ╟╼", border_style),
     ]);
 
-    let content = vec![line1, line2, line3, line4, line5];
-
-    let block = Block::default()
-        .borders(Borders::BOTTOM)
-        .border_style(Style::default().fg(COLOR_BORDER));
-
-    let header = Paragraph::new(content).block(block);
-
+    let header = Paragraph::new(vec![line0, line1, line2, line3, line4, line5]);
     frame.render_widget(header, area);
 }
 
