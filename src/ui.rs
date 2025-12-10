@@ -108,28 +108,22 @@ pub fn draw(frame: &mut Frame, app: &App) {
 }
 
 // ============================================================================
-// Header - ASCII Art with Gradient
+// Header - ASCII Art Logo
 // ============================================================================
 
-// Cyberpunk colors for the ASCII art gradient
-const LOGO_COLORS: [Color; 4] = [
-    Color::Rgb(56, 189, 248),   // Cyan (matches COLOR_PRIMARY)
-    Color::Rgb(244, 114, 182),  // Pink (matches COLOR_KEY)
-    Color::Rgb(192, 132, 252),  // Purple (matches COLOR_ACCENT)
-    Color::Rgb(52, 211, 153),   // Emerald (matches COLOR_SECONDARY)
-];
-
-/// Creates a line with colored characters.
-fn colored_line(text: &str, offset: usize) -> Line<'static> {
-    let spans: Vec<Span> = text
-        .chars()
-        .enumerate()
-        .map(|(i, c)| {
-            let color = LOGO_COLORS[(i + offset) % LOGO_COLORS.len()];
-            Span::styled(c.to_string(), Style::default().fg(color).bold())
-        })
-        .collect();
-    Line::from(spans)
+/// Returns a randomly selected logo color (selected once at startup)
+fn logo_color() -> Color {
+    use std::sync::OnceLock;
+    static COLOR: OnceLock<Color> = OnceLock::new();
+    *COLOR.get_or_init(|| {
+        const COLORS: [Color; 4] = [
+            Color::Rgb(56, 189, 248),   // Cyan
+            Color::Rgb(244, 114, 182),  // Pink
+            Color::Rgb(192, 132, 252),  // Purple
+            Color::Rgb(52, 211, 153),   // Emerald
+        ];
+        COLORS[std::process::id() as usize % COLORS.len()]
+    })
 }
 
 /// Draws the header with ASCII art logo and subtitle.
@@ -137,6 +131,7 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     let border_style = Style::default().fg(COLOR_BORDER);
     let dim_style = Style::default().fg(Color::Rgb(55, 65, 81));
     let muted_style = Style::default().fg(Color::Rgb(75, 85, 99));
+    let logo_style = Style::default().fg(logo_color()).bold();
 
     // Status indicator
     let status = if app.is_loading {
@@ -170,25 +165,17 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     ]);
 
     // Logo line 1 + info panel top
-    let mut line1 = Line::from(vec![
+    let line1 = Line::from(vec![
         Span::styled("┃", Style::default().fg(COLOR_ACCENT)),
-        Span::styled(" ", Style::default()),
-    ]);
-    line1.spans.extend(colored_line("▄████ ▄█▀▀▀ ███▄███▄", 0).spans);
-    line1.spans.extend(vec![
-        Span::styled("  ", Style::default()),
+        Span::styled(" ▄████ ▄█▀▀▀ ███▄███▄  ", logo_style),
         Span::styled("┃", Style::default().fg(COLOR_PRIMARY)),
         Span::styled("  ╭───────────────────────────────╮", border_style),
     ]);
 
     // Logo line 2 + SECRET::MANAGER title
-    let mut line2 = Line::from(vec![
+    let line2 = Line::from(vec![
         Span::styled("┃", Style::default().fg(COLOR_ACCENT)),
-        Span::styled(" ", Style::default()),
-    ]);
-    line2.spans.extend(colored_line("██ ██ ▀███▄ ██ ██ ██", 0).spans);
-    line2.spans.extend(vec![
-        Span::styled("  ", Style::default()),
+        Span::styled(" ██ ██ ▀███▄ ██ ██ ██  ", logo_style),
         Span::styled("┃", Style::default().fg(COLOR_PRIMARY)),
         Span::styled("  │ ", border_style),
         Span::styled("◆", Style::default().fg(COLOR_ACCENT)),
@@ -201,13 +188,9 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     ]);
 
     // Logo line 3 + info tags
-    let mut line3 = Line::from(vec![
+    let line3 = Line::from(vec![
         Span::styled("┃", Style::default().fg(COLOR_ACCENT)),
-        Span::styled(" ", Style::default()),
-    ]);
-    line3.spans.extend(colored_line("▀████ ▄▄▄█▀ ██ ██ ██", 0).spans);
-    line3.spans.extend(vec![
-        Span::styled("  ", Style::default()),
+        Span::styled(" ▀████ ▄▄▄█▀ ██ ██ ██  ", logo_style),
         Span::styled("┃", Style::default().fg(COLOR_PRIMARY)),
         Span::styled("  │ ", border_style),
         Span::styled("▪", Style::default().fg(COLOR_SECONDARY)),
@@ -223,10 +206,7 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     // Logo line 4 (G tail) + info panel bottom
     let line4 = Line::from(vec![
         Span::styled("┃", Style::default().fg(COLOR_ACCENT)),
-        Span::styled("    ", Style::default()),
-        Span::styled("█", Style::default().fg(LOGO_COLORS[3]).bold()),
-        Span::styled("█", Style::default().fg(LOGO_COLORS[0]).bold()),
-        Span::styled("                 ", Style::default()),
+        Span::styled("    ██                 ", logo_style),
         Span::styled("┃", Style::default().fg(COLOR_PRIMARY)),
         Span::styled("  ╰───────────────────────────────╯", border_style),
     ]);
@@ -234,10 +214,7 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
     // Logo line 5 (G base) + project info
     let line5 = Line::from(vec![
         Span::styled("┗", Style::default().fg(COLOR_ACCENT)),
-        Span::styled("  ", Style::default()),
-        Span::styled("▀", Style::default().fg(LOGO_COLORS[1]).bold()),
-        Span::styled("▀", Style::default().fg(LOGO_COLORS[2]).bold()),
-        Span::styled("▀", Style::default().fg(LOGO_COLORS[3]).bold()),
+        Span::styled("━━▀▀▀", logo_style),
         Span::styled("━━━━━━━━━━━━━━━━━━", border_style),
         Span::styled("┛", Style::default().fg(COLOR_PRIMARY)),
         Span::styled("  ╾╢", border_style),
