@@ -7,9 +7,7 @@ use std::time::Duration;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
-/// Timeout for polling events (in milliseconds).
-/// A shorter timeout makes the UI more responsive but uses more CPU.
-const POLL_TIMEOUT_MS: u64 = 100;
+use crate::constants::POLL_TIMEOUT;
 
 /// Represents the different actions a user can take in the application.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,7 +62,7 @@ impl EventHandler {
     /// Creates a new event handler with default settings.
     pub fn new() -> Self {
         Self {
-            poll_timeout: Duration::from_millis(POLL_TIMEOUT_MS),
+            poll_timeout: POLL_TIMEOUT,
         }
     }
 
@@ -101,7 +99,7 @@ impl EventHandler {
     }
 
     /// Converts a key event to an input-mode action.
-    fn key_to_input_action(&self, key: KeyEvent) -> Option<Action> {
+    pub(crate) fn key_to_input_action(&self, key: KeyEvent) -> Option<Action> {
         // Check for Ctrl+C (quit)
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             return Some(Action::Quit);
@@ -117,7 +115,7 @@ impl EventHandler {
     }
 
     /// Converts a key event to an application action.
-    fn key_to_action(&self, key: KeyEvent) -> Option<Action> {
+    pub(crate) fn key_to_action(&self, key: KeyEvent) -> Option<Action> {
         // Check for Ctrl+C first (quit)
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             return Some(Action::Quit);
@@ -141,13 +139,10 @@ impl EventHandler {
             KeyCode::Char('d') => Some(Action::Delete),
             KeyCode::Char('c') => Some(Action::Copy),
             KeyCode::Char('s') => Some(Action::ToggleSecretValue),
-            KeyCode::Char('?') => Some(Action::Help),
+            KeyCode::Char('?') | KeyCode::F(1) => Some(Action::Help),
             KeyCode::Char('e') => Some(Action::Enable),
             KeyCode::Char('x') => Some(Action::Disable),
             KeyCode::Char('p') => Some(Action::OpenProjectSelector),
-
-            // F1 for help (common convention)
-            KeyCode::F(1) => Some(Action::Help),
 
             // No matching action
             _ => None,
@@ -158,5 +153,177 @@ impl EventHandler {
 impl Default for EventHandler {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyEventKind, KeyEventState};
+
+    fn make_key_event(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    fn make_ctrl_key_event(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    #[test]
+    fn test_vim_navigation_keys() {
+        let handler = EventHandler::new();
+
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Char('j'))),
+            Some(Action::Down)
+        );
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Char('k'))),
+            Some(Action::Up)
+        );
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Char('g'))),
+            Some(Action::Top)
+        );
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Char('G'))),
+            Some(Action::Bottom)
+        );
+    }
+
+    #[test]
+    fn test_arrow_navigation_keys() {
+        let handler = EventHandler::new();
+
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Up)),
+            Some(Action::Up)
+        );
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Down)),
+            Some(Action::Down)
+        );
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Home)),
+            Some(Action::Top)
+        );
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::End)),
+            Some(Action::Bottom)
+        );
+    }
+
+    #[test]
+    fn test_quit_actions() {
+        let handler = EventHandler::new();
+
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Char('q'))),
+            Some(Action::Quit)
+        );
+        assert_eq!(
+            handler.key_to_action(make_ctrl_key_event(KeyCode::Char('c'))),
+            Some(Action::Quit)
+        );
+    }
+
+    #[test]
+    fn test_action_keys() {
+        let handler = EventHandler::new();
+
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Char('n'))),
+            Some(Action::NewSecret)
+        );
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Char('a'))),
+            Some(Action::NewVersion)
+        );
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Char('d'))),
+            Some(Action::Delete)
+        );
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Char('c'))),
+            Some(Action::Copy)
+        );
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Char('s'))),
+            Some(Action::ToggleSecretValue)
+        );
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Char('r'))),
+            Some(Action::Refresh)
+        );
+    }
+
+    #[test]
+    fn test_help_keys() {
+        let handler = EventHandler::new();
+
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Char('?'))),
+            Some(Action::Help)
+        );
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::F(1))),
+            Some(Action::Help)
+        );
+    }
+
+    #[test]
+    fn test_unknown_key_returns_none() {
+        let handler = EventHandler::new();
+
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Char('z'))),
+            None
+        );
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::F(12))),
+            None
+        );
+    }
+
+    #[test]
+    fn test_input_mode_actions() {
+        let handler = EventHandler::new();
+
+        assert_eq!(
+            handler.key_to_input_action(make_key_event(KeyCode::Enter)),
+            Some(Action::Enter)
+        );
+        assert_eq!(
+            handler.key_to_input_action(make_key_event(KeyCode::Esc)),
+            Some(Action::Back)
+        );
+        assert_eq!(
+            handler.key_to_input_action(make_key_event(KeyCode::Backspace)),
+            Some(Action::Backspace)
+        );
+        assert_eq!(
+            handler.key_to_input_action(make_key_event(KeyCode::Char('a'))),
+            Some(Action::Char('a'))
+        );
+    }
+
+    #[test]
+    fn test_input_mode_ctrl_c_quits() {
+        let handler = EventHandler::new();
+
+        assert_eq!(
+            handler.key_to_input_action(make_ctrl_key_event(KeyCode::Char('c'))),
+            Some(Action::Quit)
+        );
     }
 }

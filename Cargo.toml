@@ -26,3 +26,6 @@ chrono = "0.4"
 
 # For clipboard support (optional)
 arboard = "3.4"
+
+# For encoding binary secrets
+base64 = "0.22"

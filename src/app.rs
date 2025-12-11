@@ -111,8 +111,8 @@ pub struct App {
 impl App {
     /// Creates a new application instance.
     ///
-    /// If a project_id is provided, starts in SecretsList view.
-    /// If None, starts in ProjectSelector view for the user to choose a project.
+    /// If a `project_id` is provided, starts in `SecretsList` view.
+    /// If None, starts in `ProjectSelector` view for the user to choose a project.
     pub fn new(project_id: Option<String>) -> Self {
         // Determine initial view and project based on whether a project was provided
         let (initial_view, project) = match project_id {
@@ -141,7 +141,7 @@ impl App {
     }
 
     /// Loads the list of secrets from the API.
-    /// If loading fails (likely auth issue), switches to AuthRequired view.
+    /// If loading fails (likely auth issue), switches to `AuthRequired` view.
     pub async fn load_secrets(&mut self) -> Result<()> {
         self.is_loading = true;
         self.set_status("Loading secrets...", false);
@@ -152,7 +152,7 @@ impl App {
             match SecretClient::new(project_id).await {
                 Ok(c) => self.client = Some(c),
                 Err(e) => {
-                    self.set_status(&format!("Auth error: {}", e), true);
+                    self.set_status(&format!("Auth error: {e}"), true);
                     self.current_view = View::AuthRequired;
                     self.is_loading = false;
                     return Ok(());
@@ -168,10 +168,10 @@ impl App {
                     self.secrets_state.select(Some(0));
                 }
                 let count = self.secrets.len();
-                self.set_status(&format!("Loaded {} secrets", count), false);
+                self.set_status(&format!("Loaded {count} secrets"), false);
             }
             Err(e) => {
-                self.set_status(&format!("Auth error: {}", e), true);
+                self.set_status(&format!("Auth error: {e}"), true);
                 self.current_view = View::AuthRequired;
             }
         }
@@ -183,7 +183,7 @@ impl App {
     /// Loads the list of available projects from the API.
     ///
     /// Used when starting without a project or when opening the project selector.
-    /// If loading fails (likely auth issue), switches to AuthRequired view.
+    /// If loading fails (likely auth issue), switches to `AuthRequired` view.
     pub async fn load_projects(&mut self) -> Result<()> {
         self.is_loading = true;
         self.set_status("Loading projects...", false);
@@ -204,11 +204,11 @@ impl App {
                     self.projects_state.select(Some(current_idx));
                 }
                 let count = self.available_projects.len();
-                self.set_status(&format!("Found {} projects", count), false);
+                self.set_status(&format!("Found {count} projects"), false);
             }
             Err(e) => {
                 // Loading failed - likely an auth issue, switch to auth view
-                self.set_status(&format!("Auth error: {}", e), true);
+                self.set_status(&format!("Auth error: {e}"), true);
                 self.current_view = View::AuthRequired;
             }
         }
@@ -227,7 +227,13 @@ impl App {
         self.is_loading = true;
         self.set_status("Loading versions...", false);
 
-        match self.client.as_ref().unwrap().list_versions(&secret_name).await {
+        match self
+            .client
+            .as_ref()
+            .unwrap()
+            .list_versions(&secret_name)
+            .await
+        {
             Ok(versions) => {
                 self.versions = versions;
                 // Select the first version if list is not empty
@@ -235,10 +241,10 @@ impl App {
                     self.versions_state.select(Some(0));
                 }
                 let count = self.versions.len();
-                self.set_status(&format!("Loaded {} versions", count), false);
+                self.set_status(&format!("Loaded {count} versions"), false);
             }
             Err(e) => {
-                self.set_status(&format!("Error loading versions: {}", e), true);
+                self.set_status(&format!("Error loading versions: {e}"), true);
             }
         }
 
@@ -246,7 +252,7 @@ impl App {
         Ok(())
     }
 
-    /// Handles an action and returns an AppAction if one is needed.
+    /// Handles an action and returns an `AppAction` if one is needed.
     pub async fn handle_event(&mut self, action: Action) -> Result<Option<AppAction>> {
         // Handle help toggle from any view
         if action == Action::Help {
@@ -262,7 +268,9 @@ impl App {
 
         // Handle confirmation dialogs
         if let View::Confirm(ref confirm_action) = self.current_view {
-            return self.handle_confirm_action(action, confirm_action.clone()).await;
+            return self
+                .handle_confirm_action(action, confirm_action.clone())
+                .await;
         }
 
         // Handle input mode
@@ -272,7 +280,7 @@ impl App {
 
         // Handle based on current view
         match self.current_view {
-            View::AuthRequired => self.handle_auth_required_action(action),
+            View::AuthRequired => Ok(self.handle_auth_required_action(&action)),
             View::SecretsList => self.handle_secrets_list_action(action).await,
             View::SecretDetail => self.handle_secret_detail_action(action).await,
             View::ProjectSelector => self.handle_project_selector_action(action).await,
@@ -281,11 +289,11 @@ impl App {
     }
 
     /// Handles actions in the auth required view.
-    fn handle_auth_required_action(&mut self, action: Action) -> Result<Option<AppAction>> {
+    fn handle_auth_required_action(&mut self, action: &Action) -> Option<AppAction> {
         match action {
-            Action::Quit => Ok(Some(AppAction::Quit)),
-            Action::Enter => Ok(Some(AppAction::RunGcloudAuth)),
-            _ => Ok(None),
+            Action::Quit => Some(AppAction::Quit),
+            Action::Enter => Some(AppAction::RunGcloudAuth),
+            _ => None,
         }
     }
 
@@ -299,7 +307,7 @@ impl App {
     /// Called when gcloud auth fails.
     pub fn on_auth_failure(&mut self, error: Option<&str>) {
         if let Some(e) = error {
-            self.set_status(&format!("Failed to run gcloud: {}", e), true);
+            self.set_status(&format!("Failed to run gcloud: {e}"), true);
         } else {
             self.set_status("Authentication was cancelled or failed", true);
         }
@@ -324,7 +332,10 @@ impl App {
     }
 
     /// Handles actions in the project selector view.
-    async fn handle_project_selector_action(&mut self, action: Action) -> Result<Option<AppAction>> {
+    async fn handle_project_selector_action(
+        &mut self,
+        action: Action,
+    ) -> Result<Option<AppAction>> {
         match action {
             Action::Quit => return Ok(Some(AppAction::Quit)),
             Action::Back => self.go_back(),
@@ -361,7 +372,11 @@ impl App {
     }
 
     /// Handles actions during text input.
-    async fn handle_input_action(&mut self, action: Action, mode: InputMode) -> Result<Option<AppAction>> {
+    async fn handle_input_action(
+        &mut self,
+        action: Action,
+        mode: InputMode,
+    ) -> Result<Option<AppAction>> {
         match action {
             Action::Quit => return Ok(Some(AppAction::Quit)),
             Action::Back => {
@@ -383,7 +398,11 @@ impl App {
     }
 
     /// Handles actions in confirmation dialogs.
-    async fn handle_confirm_action(&mut self, action: Action, confirm: ConfirmAction) -> Result<Option<AppAction>> {
+    async fn handle_confirm_action(
+        &mut self,
+        action: Action,
+        confirm: ConfirmAction,
+    ) -> Result<Option<AppAction>> {
         match action {
             Action::Enter => {
                 // User confirmed the action
@@ -531,7 +550,7 @@ impl App {
                 }
 
                 // Switch to the new project
-                self.project_id = new_project_id.clone();
+                self.project_id.clone_from(&new_project_id);
                 self.client = None; // Clear the client to force reinitialization
                 self.secrets.clear();
                 self.secrets_state = ListState::default();
@@ -540,7 +559,7 @@ impl App {
                 self.versions_state = ListState::default();
                 self.revealed_value = None;
 
-                self.set_status(&format!("Switched to project: {}", new_project_id), false);
+                self.set_status(&format!("Switched to project: {new_project_id}"), false);
                 self.current_view = View::SecretsList;
                 self.previous_view = None;
 
@@ -602,15 +621,22 @@ impl App {
 
         match mode {
             InputMode::NewSecretName => {
+                // Validate secret name before API call
+                if let Err(e) = crate::validation::validate_secret_name(&input) {
+                    self.set_status(&e, true);
+                    self.go_back();
+                    return Ok(());
+                }
+
                 self.is_loading = true;
                 match self.client.as_ref().unwrap().create_secret(&input).await {
                     Ok(_) => {
-                        self.set_status(&format!("Created secret: {}", input), false);
+                        self.set_status(&format!("Created secret: {input}"), false);
                         self.go_back();
                         self.load_secrets().await?;
                     }
                     Err(e) => {
-                        self.set_status(&format!("Failed to create secret: {}", e), true);
+                        self.set_status(&format!("Failed to create secret: {e}"), true);
                         self.go_back();
                     }
                 }
@@ -620,14 +646,20 @@ impl App {
                 if let Some(secret) = &self.current_secret {
                     let secret_name = secret.short_name.clone();
                     self.is_loading = true;
-                    match self.client.as_ref().unwrap().add_version(&secret_name, &input).await {
+                    match self
+                        .client
+                        .as_ref()
+                        .unwrap()
+                        .add_version(&secret_name, &input)
+                        .await
+                    {
                         Ok(v) => {
                             self.set_status(&format!("Added version: {}", v.version), false);
                             self.go_back();
                             self.load_versions().await?;
                         }
                         Err(e) => {
-                            self.set_status(&format!("Failed to add version: {}", e), true);
+                            self.set_status(&format!("Failed to add version: {e}"), true);
                             self.go_back();
                         }
                     }
@@ -666,7 +698,8 @@ impl App {
                 let secret_name = secret.short_name.clone();
                 let version_num = version.version.clone();
                 self.previous_view = Some(self.current_view.clone());
-                self.current_view = View::Confirm(ConfirmAction::DestroyVersion(secret_name, version_num));
+                self.current_view =
+                    View::Confirm(ConfirmAction::DestroyVersion(secret_name, version_num));
             }
         }
     }
@@ -677,13 +710,13 @@ impl App {
                 self.is_loading = true;
                 match self.client.as_ref().unwrap().delete_secret(&name).await {
                     Ok(()) => {
-                        self.set_status(&format!("Deleted secret: {}", name), false);
+                        self.set_status(&format!("Deleted secret: {name}"), false);
                         self.current_view = View::SecretsList;
                         self.previous_view = None;
                         self.load_secrets().await?;
                     }
                     Err(e) => {
-                        self.set_status(&format!("Failed to delete: {}", e), true);
+                        self.set_status(&format!("Failed to delete: {e}"), true);
                         self.go_back();
                     }
                 }
@@ -691,14 +724,20 @@ impl App {
             }
             ConfirmAction::DestroyVersion(secret_name, version) => {
                 self.is_loading = true;
-                match self.client.as_ref().unwrap().destroy_version(&secret_name, &version).await {
+                match self
+                    .client
+                    .as_ref()
+                    .unwrap()
+                    .destroy_version(&secret_name, &version)
+                    .await
+                {
                     Ok(_) => {
-                        self.set_status(&format!("Destroyed version: {}", version), false);
+                        self.set_status(&format!("Destroyed version: {version}"), false);
                         self.go_back();
                         self.load_versions().await?;
                     }
                     Err(e) => {
-                        self.set_status(&format!("Failed to destroy: {}", e), true);
+                        self.set_status(&format!("Failed to destroy: {e}"), true);
                         self.go_back();
                     }
                 }
@@ -723,7 +762,10 @@ impl App {
                 // Only show for enabled versions (API restriction)
                 match version.state {
                     VersionState::Destroyed => {
-                        self.set_status("Cannot access destroyed version - data is permanently gone", true);
+                        self.set_status(
+                            "Cannot access destroyed version - data is permanently gone",
+                            true,
+                        );
                         return Ok(());
                     }
                     VersionState::Disabled => {
@@ -737,13 +779,19 @@ impl App {
                 let version_num = version.version.clone();
 
                 self.is_loading = true;
-                match self.client.as_ref().unwrap().access_version(&secret_name, &version_num).await {
+                match self
+                    .client
+                    .as_ref()
+                    .unwrap()
+                    .access_version(&secret_name, &version_num)
+                    .await
+                {
                     Ok(value) => {
                         self.revealed_value = Some(value);
                         self.set_status("Press 's' to hide value", false);
                     }
                     Err(e) => {
-                        self.set_status(&format!("Failed to access: {}", e), true);
+                        self.set_status(&format!("Failed to access: {e}"), true);
                     }
                 }
                 self.is_loading = false;
@@ -757,7 +805,10 @@ impl App {
             if let Some(version) = self.versions.get(idx) {
                 match version.state {
                     VersionState::Destroyed => {
-                        self.set_status("Cannot copy destroyed version - data is permanently gone", true);
+                        self.set_status(
+                            "Cannot copy destroyed version - data is permanently gone",
+                            true,
+                        );
                         return Ok(());
                     }
                     VersionState::Disabled => {
@@ -771,7 +822,13 @@ impl App {
                 let version_num = version.version.clone();
 
                 self.is_loading = true;
-                match self.client.as_ref().unwrap().access_version(&secret_name, &version_num).await {
+                match self
+                    .client
+                    .as_ref()
+                    .unwrap()
+                    .access_version(&secret_name, &version_num)
+                    .await
+                {
                     Ok(value) => {
                         // Try to copy to clipboard
                         match arboard::Clipboard::new() {
@@ -788,7 +845,7 @@ impl App {
                         }
                     }
                     Err(e) => {
-                        self.set_status(&format!("Failed to access: {}", e), true);
+                        self.set_status(&format!("Failed to access: {e}"), true);
                     }
                 }
                 self.is_loading = false;
@@ -811,13 +868,19 @@ impl App {
                 let version_num = version.version.clone();
 
                 self.is_loading = true;
-                match self.client.as_ref().unwrap().enable_version(&secret_name, &version_num).await {
+                match self
+                    .client
+                    .as_ref()
+                    .unwrap()
+                    .enable_version(&secret_name, &version_num)
+                    .await
+                {
                     Ok(_) => {
-                        self.set_status(&format!("Enabled version: {}", version_num), false);
+                        self.set_status(&format!("Enabled version: {version_num}"), false);
                         self.load_versions().await?;
                     }
                     Err(e) => {
-                        self.set_status(&format!("Failed to enable: {}", e), true);
+                        self.set_status(&format!("Failed to enable: {e}"), true);
                     }
                 }
                 self.is_loading = false;
@@ -838,13 +901,19 @@ impl App {
                 let version_num = version.version.clone();
 
                 self.is_loading = true;
-                match self.client.as_ref().unwrap().disable_version(&secret_name, &version_num).await {
+                match self
+                    .client
+                    .as_ref()
+                    .unwrap()
+                    .disable_version(&secret_name, &version_num)
+                    .await
+                {
                     Ok(_) => {
-                        self.set_status(&format!("Disabled version: {}", version_num), false);
+                        self.set_status(&format!("Disabled version: {version_num}"), false);
                         self.load_versions().await?;
                     }
                     Err(e) => {
-                        self.set_status(&format!("Failed to disable: {}", e), true);
+                        self.set_status(&format!("Failed to disable: {e}"), true);
                     }
                 }
                 self.is_loading = false;
@@ -862,4 +931,3 @@ impl App {
         });
     }
 }
-

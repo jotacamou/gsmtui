@@ -125,7 +125,7 @@ impl SecretClient {
         let response = self
             .client
             .list_secrets()
-            .set_parent(&self.parent())
+            .set_parent(self.parent())
             .send()
             .await
             .context("Failed to list secrets")?;
@@ -163,7 +163,8 @@ impl SecretClient {
 
     /// Gets the actual value of a secret version.
     ///
-    /// This is the only way to retrieve the secret data.
+    /// Returns the secret data as a string. If the data is not valid UTF-8,
+    /// it returns a base64-encoded representation with a prefix indicator.
     pub async fn access_version(&self, secret_name: &str, version: &str) -> Result<String> {
         let name = format!("{}/versions/{}", self.secret_path(secret_name), version);
 
@@ -176,31 +177,32 @@ impl SecretClient {
             .context("Failed to access secret version")?;
 
         // Extract the payload data
-        let payload = response
-            .payload
-            .context("Secret version has no payload")?;
+        let payload = response.payload.context("Secret version has no payload")?;
 
-        // Convert bytes to string
-        let data = payload.data;
-        let value = String::from_utf8(data.into())
-            .context("Secret value is not valid UTF-8")?;
-
-        Ok(value)
+        // Try UTF-8 first, fall back to base64 for binary data
+        let data: Vec<u8> = payload.data.into();
+        if let Ok(value) = String::from_utf8(data.clone()) {
+            Ok(value)
+        } else {
+            // Binary data - encode as base64 with indicator
+            use base64::Engine;
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
+            Ok(format!("[base64] {encoded}"))
+        }
     }
 
     /// Creates a new secret (without any version/value).
     pub async fn create_secret(&self, secret_name: &str) -> Result<SecretInfo> {
         // Set up automatic replication (Google manages the replication)
-        let replication = Replication::default().set_automatic(
-            google_cloud_secretmanager_v1::model::replication::Automatic::default(),
-        );
+        let replication = Replication::default()
+            .set_automatic(google_cloud_secretmanager_v1::model::replication::Automatic::default());
 
         let secret = Secret::default().set_replication(replication);
 
         let created = self
             .client
             .create_secret()
-            .set_parent(&self.parent())
+            .set_parent(self.parent())
             .set_secret_id(secret_name)
             .set_secret(secret)
             .send()
@@ -296,12 +298,10 @@ impl SecretClient {
 
     /// Formats a protobuf timestamp as a date string (YYYY-MM-DD).
     fn format_timestamp(seconds: i64) -> String {
-        DateTime::<Utc>::from_timestamp(seconds, 0)
-            .map(|dt| dt.format("%Y-%m-%d").to_string())
-            .unwrap_or_else(|| "Unknown".to_string())
+        DateTime::<Utc>::from_timestamp(seconds, 0).map_or_else(|| "Unknown".to_string(), |dt| dt.format("%Y-%m-%d").to_string())
     }
 
-    /// Converts a Secret proto to our SecretInfo struct.
+    /// Converts a Secret proto to our `SecretInfo` struct.
     fn secret_to_info(&self, secret: &Secret) -> SecretInfo {
         let short_name = secret
             .name
@@ -312,9 +312,7 @@ impl SecretClient {
 
         let create_time = secret
             .create_time
-            .as_ref()
-            .map(|t| Self::format_timestamp(t.seconds()))
-            .unwrap_or_else(|| "Unknown".to_string());
+            .as_ref().map_or_else(|| "Unknown".to_string(), |t| Self::format_timestamp(t.seconds()));
 
         let labels: Vec<(String, String)> = secret
             .labels
@@ -345,11 +343,7 @@ impl SecretClient {
         };
 
         // Extract Pub/Sub topics
-        let topics: Vec<String> = secret
-            .topics
-            .iter()
-            .map(|t| t.name.clone())
-            .collect();
+        let topics: Vec<String> = secret.topics.iter().map(|t| t.name.clone()).collect();
 
         // Extract version aliases
         let version_aliases: Vec<(String, i64)> = secret
@@ -359,15 +353,15 @@ impl SecretClient {
             .collect();
 
         // Parse rotation config
-        let rotation = secret.rotation.as_ref().map(|r| {
-            RotationConfig {
-                rotation_period: r.rotation_period.as_ref().map(|d| {
-                    format!("{}s", d.seconds())
-                }),
-                next_rotation_time: r.next_rotation_time.as_ref().map(|t| {
-                    Self::format_timestamp(t.seconds())
-                }),
-            }
+        let rotation = secret.rotation.as_ref().map(|r| RotationConfig {
+            rotation_period: r
+                .rotation_period
+                .as_ref()
+                .map(|d| format!("{}s", d.seconds())),
+            next_rotation_time: r
+                .next_rotation_time
+                .as_ref()
+                .map(|t| Self::format_timestamp(t.seconds())),
         });
 
         // Parse version destroy TTL
@@ -378,7 +372,7 @@ impl SecretClient {
             } else if secs >= 3600 {
                 format!("{}h", secs / 3600)
             } else {
-                format!("{}s", secs)
+                format!("{secs}s")
             }
         });
 
@@ -395,15 +389,10 @@ impl SecretClient {
         }
     }
 
-    /// Converts a SecretVersion proto to our VersionInfo struct.
+    /// Converts a `SecretVersion` proto to our `VersionInfo` struct.
     fn version_to_info(&self, version: &SecretVersion) -> VersionInfo {
         // Extract version number from name (e.g., ".../versions/1" -> "1")
-        let version_num = version
-            .name
-            .rsplit('/')
-            .next()
-            .unwrap_or("?")
-            .to_string();
+        let version_num = version.name.rsplit('/').next().unwrap_or("?").to_string();
 
         // Convert API state to our enum
         let state = match version.state {
@@ -415,9 +404,7 @@ impl SecretClient {
 
         let create_time = version
             .create_time
-            .as_ref()
-            .map(|t| Self::format_timestamp(t.seconds()))
-            .unwrap_or_else(|| "Unknown".to_string());
+            .as_ref().map_or_else(|| "Unknown".to_string(), |t| Self::format_timestamp(t.seconds()));
 
         let destroy_time = version
             .destroy_time

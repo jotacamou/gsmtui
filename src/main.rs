@@ -17,6 +17,7 @@ mod event;
 mod project_client;
 mod secret_client;
 mod ui;
+mod validation;
 
 use std::env;
 use std::path::Path;
