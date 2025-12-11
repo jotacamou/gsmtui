@@ -1,9 +1,18 @@
 //! Google Cloud Secret Manager TUI
 //!
 //! A terminal user interface for managing Google Cloud secrets.
-//! Run with: gsmtui [-p|--project <PROJECT_ID>]
+//! Run with: gsmtui [-p|--project <`PROJECT_ID`>]
+
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::missing_errors_doc,
+    clippy::too_many_lines,
+    clippy::unused_self
+)]
 
 mod app;
+mod constants;
 mod event;
 mod project_client;
 mod secret_client;
@@ -20,8 +29,8 @@ use crate::event::EventHandler;
 /// Checks if GCP credentials are available.
 ///
 /// Looks for:
-/// 1. GOOGLE_APPLICATION_CREDENTIALS environment variable pointing to a file
-/// 2. Default ADC location: ~/.config/gcloud/application_default_credentials.json
+/// 1. `GOOGLE_APPLICATION_CREDENTIALS` environment variable pointing to a file
+/// 2. Default ADC location: ~/.`config/gcloud/application_default_credentials.json`
 fn has_gcp_credentials() -> bool {
     // Check $GOOGLE_APPLICATION_CREDENTIALS first
     if let Ok(path) = env::var("GOOGLE_APPLICATION_CREDENTIALS") {
@@ -30,7 +39,9 @@ fn has_gcp_credentials() -> bool {
 
     // Check default ADC location
     if let Ok(home) = env::var("HOME") {
-        let adc_path = format!("{}/.config/gcloud/application_default_credentials.json", home);
+        let adc_path = format!(
+            "{home}/.config/gcloud/application_default_credentials.json"
+        );
         return Path::new(&adc_path).exists();
     }
 
@@ -43,23 +54,23 @@ fn has_gcp_credentials() -> bool {
 /// - `-p <PROJECT_ID>` or `--project <PROJECT_ID>` to specify a project
 /// - `-h` or `--help` to show usage
 ///
-/// Returns Some(project_id) if a project was specified, None otherwise.
+/// Returns `Some(project_id)` if a project was specified, None otherwise.
 fn parse_args() -> Option<String> {
     let args: Vec<String> = env::args().collect();
 
     // Simple argument parsing using iterator
     let mut args_iter = args.iter().skip(1); // Skip program name
 
+    #[allow(clippy::never_loop)]
     while let Some(arg) = args_iter.next() {
         match arg.as_str() {
             "-p" | "--project" => {
                 // Get the next argument as the project ID
                 if let Some(project_id) = args_iter.next() {
                     return Some(project_id.clone());
-                } else {
-                    eprintln!("Error: --project requires a PROJECT_ID argument");
-                    std::process::exit(1);
                 }
+                eprintln!("Error: --project requires a PROJECT_ID argument");
+                std::process::exit(1);
             }
             "-h" | "--help" => {
                 println!("gsmtui - Google Cloud Secret Manager TUI");
@@ -77,7 +88,7 @@ fn parse_args() -> Option<String> {
                 std::process::exit(0);
             }
             other => {
-                eprintln!("Error: Unknown argument '{}'", other);
+                eprintln!("Error: Unknown argument '{other}'");
                 eprintln!("Use --help for usage information");
                 std::process::exit(1);
             }
@@ -123,9 +134,7 @@ async fn main() -> Result<()> {
 /// 4. Repeat until the user quits
 async fn run_app(mut terminal: ratatui::DefaultTerminal, mut app: App) -> Result<()> {
     // Check credentials before loading anything
-    if !has_gcp_credentials() {
-        app.current_view = View::AuthRequired;
-    } else {
+    if has_gcp_credentials() {
         // Load initial data based on starting view
         match app.current_view {
             View::SecretsList => {
@@ -138,6 +147,8 @@ async fn run_app(mut terminal: ratatui::DefaultTerminal, mut app: App) -> Result
             }
             _ => {}
         }
+    } else {
+        app.current_view = View::AuthRequired;
     }
 
     // Create the event handler
