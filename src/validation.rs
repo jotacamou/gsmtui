@@ -66,4 +66,28 @@ mod tests {
         assert!(validate_secret_name("my secret").is_err()); // Contains space
         assert!(validate_secret_name("my.secret").is_err()); // Contains period
     }
+
+    #[test]
+    fn test_max_length_passes() {
+        // 255 characters should be valid (GCP max length)
+        let name = format!("a{}", "b".repeat(254));
+        assert_eq!(name.len(), 255);
+        assert!(validate_secret_name(&name).is_ok());
+    }
+
+    #[test]
+    fn test_over_max_length_fails() {
+        // 256 characters should fail
+        let name = format!("a{}", "b".repeat(255));
+        assert_eq!(name.len(), 256);
+        assert!(validate_secret_name(&name).is_err());
+    }
+
+    #[test]
+    fn test_unicode_rejected() {
+        // GCP requires ASCII-only secret names
+        assert!(validate_secret_name("café").is_err());
+        assert!(validate_secret_name("日本語").is_err());
+        assert!(validate_secret_name("emoji🎉").is_err());
+    }
 }

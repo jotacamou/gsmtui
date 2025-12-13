@@ -297,7 +297,7 @@ impl SecretClient {
     }
 
     /// Formats a protobuf timestamp as a date string (YYYY-MM-DD).
-    fn format_timestamp(seconds: i64) -> String {
+    pub(crate) fn format_timestamp(seconds: i64) -> String {
         DateTime::<Utc>::from_timestamp(seconds, 0).map_or_else(|| "Unknown".to_string(), |dt| dt.format("%Y-%m-%d").to_string())
     }
 
@@ -424,5 +424,24 @@ impl SecretClient {
             scheduled_destroy_time,
             has_checksum: version.client_specified_payload_checksum,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_timestamp_valid() {
+        // 2024-01-15 00:00:00 UTC = 1705276800 seconds since epoch
+        let result = SecretClient::format_timestamp(1705276800);
+        assert_eq!(result, "2024-01-15");
+    }
+
+    #[test]
+    fn test_format_timestamp_returns_unknown_on_invalid() {
+        // i64::MIN is way out of range for valid timestamps
+        let result = SecretClient::format_timestamp(i64::MIN);
+        assert_eq!(result, "Unknown");
     }
 }

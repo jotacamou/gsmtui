@@ -931,3 +931,167 @@ impl App {
         });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::secret_client::ReplicationPolicy;
+
+    /// Helper to create a mock SecretInfo for testing.
+    fn mock_secret(name: &str) -> SecretInfo {
+        SecretInfo {
+            short_name: name.to_string(),
+            create_time: "2024-01-01".to_string(),
+            labels: vec![],
+            annotations: vec![],
+            replication: ReplicationPolicy::Automatic,
+            topics: vec![],
+            version_aliases: vec![],
+            rotation: None,
+            version_destroy_ttl: None,
+        }
+    }
+
+    // --- Constructor Tests ---
+
+    #[test]
+    fn test_new_with_project_id() {
+        let app = App::new(Some("my-project".to_string()));
+
+        assert_eq!(app.project_id, "my-project");
+        assert_eq!(app.current_view, View::SecretsList);
+        assert!(app.secrets.is_empty());
+        assert!(app.client.is_none());
+    }
+
+    #[test]
+    fn test_new_without_project_id() {
+        let app = App::new(None);
+
+        assert!(app.project_id.is_empty());
+        assert_eq!(app.current_view, View::ProjectSelector);
+    }
+
+    // --- Input Buffer Edge Case ---
+
+    #[test]
+    fn test_input_backspace_on_empty() {
+        let mut app = App::new(None);
+        assert!(app.input_buffer.is_empty());
+
+        // Should not panic on empty buffer
+        app.input_backspace();
+        assert!(app.input_buffer.is_empty());
+    }
+
+    // --- Navigation Tests ---
+
+    #[test]
+    fn test_select_next_secret_wraps() {
+        let mut app = App::new(Some("test".to_string()));
+        app.secrets = vec![mock_secret("a"), mock_secret("b"), mock_secret("c")];
+        app.secrets_state.select(Some(2)); // Select last item
+
+        app.select_next_secret();
+
+        assert_eq!(app.secrets_state.selected(), Some(0)); // Wrapped to first
+    }
+
+    #[test]
+    fn test_select_previous_secret_wraps() {
+        let mut app = App::new(Some("test".to_string()));
+        app.secrets = vec![mock_secret("a"), mock_secret("b"), mock_secret("c")];
+        app.secrets_state.select(Some(0)); // Select first item
+
+        app.select_previous_secret();
+
+        assert_eq!(app.secrets_state.selected(), Some(2)); // Wrapped to last
+    }
+
+    #[test]
+    fn test_navigation_on_empty_list() {
+        let mut app = App::new(Some("test".to_string()));
+        assert!(app.secrets.is_empty());
+
+        // Should not panic on empty list
+        app.select_next_secret();
+        app.select_previous_secret();
+        app.select_first_secret();
+        app.select_last_secret();
+
+        // Selection should remain None
+        assert_eq!(app.secrets_state.selected(), None);
+    }
+
+    // --- Version Navigation Unique Behavior ---
+
+    #[test]
+    fn test_version_navigation_clears_revealed_value() {
+        let mut app = App::new(Some("test".to_string()));
+        app.versions = vec![
+            VersionInfo {
+                version: "1".to_string(),
+                state: VersionState::Enabled,
+                create_time: "2024-01-01".to_string(),
+                destroy_time: None,
+                scheduled_destroy_time: None,
+                has_checksum: false,
+            },
+            VersionInfo {
+                version: "2".to_string(),
+                state: VersionState::Enabled,
+                create_time: "2024-01-02".to_string(),
+                destroy_time: None,
+                scheduled_destroy_time: None,
+                has_checksum: false,
+            },
+        ];
+        app.versions_state.select(Some(0));
+        app.revealed_value = Some("secret-value".to_string());
+
+        app.select_next_version();
+
+        assert!(app.revealed_value.is_none()); // Should be cleared
+        assert_eq!(app.versions_state.selected(), Some(1));
+    }
+
+    // --- View Navigation Tests ---
+
+    #[test]
+    fn test_go_back_with_previous_view() {
+        let mut app = App::new(Some("test".to_string()));
+        app.current_view = View::SecretDetail;
+        app.previous_view = Some(View::SecretsList);
+
+        app.go_back();
+
+        assert_eq!(app.current_view, View::SecretsList);
+        assert!(app.previous_view.is_none()); // Should be consumed
+    }
+
+    #[test]
+    fn test_go_back_defaults_to_secrets_list() {
+        let mut app = App::new(Some("test".to_string()));
+        app.current_view = View::SecretDetail;
+        app.previous_view = None; // No previous view
+
+        app.go_back();
+
+        assert_eq!(app.current_view, View::SecretsList); // Default fallback
+    }
+
+    // --- Mode Transition Tests ---
+
+    #[test]
+    fn test_start_new_secret_clears_buffer() {
+        let mut app = App::new(Some("test".to_string()));
+        app.current_view = View::SecretsList;
+        app.input_buffer = "leftover text".to_string();
+
+        app.start_new_secret();
+
+        assert!(app.input_buffer.is_empty()); // Buffer cleared
+        assert_eq!(app.current_view, View::Input(InputMode::NewSecretName));
+        assert_eq!(app.previous_view, Some(View::SecretsList)); // Saved for go_back
+    }
+}

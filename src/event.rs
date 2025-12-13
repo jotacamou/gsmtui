@@ -326,4 +326,47 @@ mod tests {
             Some(Action::Quit)
         );
     }
+
+    #[test]
+    fn test_enable_disable_keys() {
+        let handler = EventHandler::new();
+
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Char('e'))),
+            Some(Action::Enable)
+        );
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Char('x'))),
+            Some(Action::Disable)
+        );
+    }
+
+    #[test]
+    fn test_project_selector_key() {
+        let handler = EventHandler::new();
+
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Char('p'))),
+            Some(Action::OpenProjectSelector)
+        );
+    }
+
+    #[test]
+    fn test_back_keys() {
+        let handler = EventHandler::new();
+
+        // All three keys should map to Back action
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Esc)),
+            Some(Action::Back)
+        );
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Backspace)),
+            Some(Action::Back)
+        );
+        assert_eq!(
+            handler.key_to_action(make_key_event(KeyCode::Char('b'))),
+            Some(Action::Back)
+        );
+    }
 }
