@@ -15,6 +15,12 @@ use crate::constants::dialog;
 use super::colors;
 use super::utils::centered_rect;
 
+/// Block cursor character for input fields.
+pub(crate) const BLOCK_CURSOR: &str = "█";
+
+/// Input field prompt indicator.
+pub(crate) const INPUT_INDICATOR: &str = "› ";
+
 /// Draws the text input dialog.
 pub fn draw_input_dialog(frame: &mut Frame, mode: &InputMode, app: &App) {
     let (title, prompt, icon) = match mode {
@@ -46,13 +52,10 @@ pub fn draw_input_dialog(frame: &mut Frame, mode: &InputMode, app: &App) {
         Line::from(Span::styled(prompt, Style::default().fg(Color::White))),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  ", Style::default()),
+            Span::styled(format!("  {INPUT_INDICATOR}"), Style::default().fg(colors::MUTED)),
+            Span::styled(&app.input_buffer, Style::default().fg(Color::White)),
             Span::styled(
-                &app.input_buffer,
-                Style::default().fg(Color::White).underlined(),
-            ),
-            Span::styled(
-                "",
+                BLOCK_CURSOR,
                 Style::default()
                     .fg(colors::PRIMARY)
                     .add_modifier(Modifier::SLOW_BLINK),
@@ -248,4 +251,20 @@ pub fn draw_project_selector(frame: &mut Frame, app: &App) {
         Span::styled(" cancel", Style::default().fg(colors::MUTED)),
     ]));
     frame.render_widget(footer, chunks[2]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cursor_is_visible() {
+        assert!(!BLOCK_CURSOR.is_empty());
+        assert_eq!(BLOCK_CURSOR, "█");
+    }
+
+    #[test]
+    fn test_input_indicator_exists() {
+        assert!(!INPUT_INDICATOR.is_empty());
+    }
 }
