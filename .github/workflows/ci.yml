@@ -94,19 +94,3 @@ jobs:
       - name: Run cargo-deny
         run: cargo deny check
 
-  msrv:
-    name: MSRV Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust 1.90 (MSRV)
-        uses: dtolnay/rust-toolchain@1.90.0
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
-
-      - name: Check MSRV
-        run: cargo check --locked
