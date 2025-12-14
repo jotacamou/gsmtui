@@ -439,7 +439,7 @@ mod tests {
     #[test]
     fn test_format_timestamp_valid() {
         // 2024-01-15 00:00:00 UTC = 1705276800 seconds since epoch
-        let result = SecretClient::format_timestamp(1705276800);
+        let result = SecretClient::format_timestamp(1_705_276_800);
         assert_eq!(result, "2024-01-15");
     }
 

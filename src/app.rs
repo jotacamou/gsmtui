@@ -937,7 +937,7 @@ mod tests {
     use super::*;
     use crate::secret_client::ReplicationPolicy;
 
-    /// Helper to create a mock SecretInfo for testing.
+    /// Helper to create a mock `SecretInfo` for testing.
     fn mock_secret(name: &str) -> SecretInfo {
         SecretInfo {
             short_name: name.to_string(),

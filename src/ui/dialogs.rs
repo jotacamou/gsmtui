@@ -259,12 +259,11 @@ mod tests {
 
     #[test]
     fn test_cursor_is_visible() {
-        assert!(!BLOCK_CURSOR.is_empty());
         assert_eq!(BLOCK_CURSOR, "█");
     }
 
     #[test]
     fn test_input_indicator_exists() {
-        assert!(!INPUT_INDICATOR.is_empty());
+        assert_eq!(INPUT_INDICATOR, "> ");
     }
 }
