@@ -298,7 +298,10 @@ impl SecretClient {
 
     /// Formats a protobuf timestamp as a date string (YYYY-MM-DD).
     pub(crate) fn format_timestamp(seconds: i64) -> String {
-        DateTime::<Utc>::from_timestamp(seconds, 0).map_or_else(|| "Unknown".to_string(), |dt| dt.format("%Y-%m-%d").to_string())
+        DateTime::<Utc>::from_timestamp(seconds, 0).map_or_else(
+            || "Unknown".to_string(),
+            |dt| dt.format("%Y-%m-%d").to_string(),
+        )
     }
 
     /// Converts a Secret proto to our `SecretInfo` struct.
@@ -310,9 +313,10 @@ impl SecretClient {
             .unwrap_or(&secret.name)
             .to_string();
 
-        let create_time = secret
-            .create_time
-            .as_ref().map_or_else(|| "Unknown".to_string(), |t| Self::format_timestamp(t.seconds()));
+        let create_time = secret.create_time.as_ref().map_or_else(
+            || "Unknown".to_string(),
+            |t| Self::format_timestamp(t.seconds()),
+        );
 
         let labels: Vec<(String, String)> = secret
             .labels
@@ -402,9 +406,10 @@ impl SecretClient {
             _ => VersionState::Unknown,
         };
 
-        let create_time = version
-            .create_time
-            .as_ref().map_or_else(|| "Unknown".to_string(), |t| Self::format_timestamp(t.seconds()));
+        let create_time = version.create_time.as_ref().map_or_else(
+            || "Unknown".to_string(),
+            |t| Self::format_timestamp(t.seconds()),
+        );
 
         let destroy_time = version
             .destroy_time

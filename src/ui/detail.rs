@@ -72,10 +72,7 @@ pub fn draw_secret_detail(frame: &mut Frame, area: Rect, app: &App) {
         .title(Line::from(vec![
             Span::styled(" ", Style::default()),
             Span::styled("", Style::default().fg(colors::PRIMARY)),
-            Span::styled(
-                " Secret Details ",
-                Style::default().fg(Color::White).bold(),
-            ),
+            Span::styled(" Secret Details ", Style::default().fg(Color::White).bold()),
         ]));
 
     // Replication display
@@ -93,10 +90,7 @@ pub fn draw_secret_detail(frame: &mut Frame, area: Rect, app: &App) {
     let mut info_content = vec![
         Line::from(vec![
             Span::styled("  Name        ", Style::default().fg(colors::MUTED)),
-            Span::styled(
-                &secret.short_name,
-                Style::default().fg(Color::White).bold(),
-            ),
+            Span::styled(&secret.short_name, Style::default().fg(Color::White).bold()),
         ]),
         Line::from(vec![
             Span::styled("  Created     ", Style::default().fg(colors::MUTED)),
@@ -191,10 +185,7 @@ pub fn draw_secret_detail(frame: &mut Frame, area: Rect, app: &App) {
         info_content.push(Line::from(vec![
             Span::styled("  Destroy TTL ", Style::default().fg(colors::MUTED)),
             Span::styled(ttl, Style::default().fg(colors::WARNING)),
-            Span::styled(
-                " (delayed destruction)",
-                Style::default().fg(colors::MUTED),
-            ),
+            Span::styled(" (delayed destruction)", Style::default().fg(colors::MUTED)),
         ]));
     }
 

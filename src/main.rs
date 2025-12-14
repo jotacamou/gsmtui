@@ -40,9 +40,7 @@ fn has_gcp_credentials() -> bool {
 
     // Check default ADC location
     if let Ok(home) = env::var("HOME") {
-        let adc_path = format!(
-            "{home}/.config/gcloud/application_default_credentials.json"
-        );
+        let adc_path = format!("{home}/.config/gcloud/application_default_credentials.json");
         return Path::new(&adc_path).exists();
     }
 
