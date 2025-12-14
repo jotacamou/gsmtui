@@ -264,6 +264,6 @@ mod tests {
 
     #[test]
     fn test_input_indicator_exists() {
-        assert_eq!(INPUT_INDICATOR, "> ");
+        assert_eq!(INPUT_INDICATOR, "› ");
     }
 }
