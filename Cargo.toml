@@ -9,7 +9,7 @@ repository = "https://github.com/jotacamou/gsmtui"
 [dependencies]
 # TUI framework
 ratatui = "0.29"
-crossterm = "0.28"
+crossterm = "0.29"
 
 # Google Cloud Secret Manager
 google-cloud-secretmanager-v1 = "1.1"
