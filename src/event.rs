@@ -289,10 +289,7 @@ mod tests {
             handler.key_to_action(make_key_event(KeyCode::Char('z'))),
             None
         );
-        assert_eq!(
-            handler.key_to_action(make_key_event(KeyCode::F(12))),
-            None
-        );
+        assert_eq!(handler.key_to_action(make_key_event(KeyCode::F(12))), None);
     }
 
     #[test]

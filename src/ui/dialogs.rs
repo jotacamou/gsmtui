@@ -52,7 +52,10 @@ pub fn draw_input_dialog(frame: &mut Frame, mode: &InputMode, app: &App) {
         Line::from(Span::styled(prompt, Style::default().fg(Color::White))),
         Line::from(""),
         Line::from(vec![
-            Span::styled(format!("  {INPUT_INDICATOR}"), Style::default().fg(colors::MUTED)),
+            Span::styled(
+                format!("  {INPUT_INDICATOR}"),
+                Style::default().fg(colors::MUTED),
+            ),
             Span::styled(&app.input_buffer, Style::default().fg(Color::White)),
             Span::styled(
                 BLOCK_CURSOR,
@@ -165,10 +168,7 @@ pub fn draw_project_selector(frame: &mut Frame, app: &App) {
         .title(Line::from(vec![
             Span::styled(" ", Style::default()),
             Span::styled("", Style::default().fg(colors::ACCENT)),
-            Span::styled(
-                " Select Project ",
-                Style::default().fg(Color::White).bold(),
-            ),
+            Span::styled(" Select Project ", Style::default().fg(Color::White).bold()),
         ]));
 
     frame.render_widget(block, area);
@@ -259,12 +259,11 @@ mod tests {
 
     #[test]
     fn test_cursor_is_visible() {
-        assert!(!BLOCK_CURSOR.is_empty());
         assert_eq!(BLOCK_CURSOR, "█");
     }
 
     #[test]
     fn test_input_indicator_exists() {
-        assert!(!INPUT_INDICATOR.is_empty());
+        assert_eq!(INPUT_INDICATOR, "› ");
     }
 }

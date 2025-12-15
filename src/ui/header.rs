@@ -51,10 +51,7 @@ pub fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
         vec![
             Span::styled("┃", border_style),
             Span::styled(" ◈ ", Style::default().fg(colors::SUCCESS)),
-            Span::styled(
-                "Google Cloud",
-                Style::default().fg(colors::SUCCESS).bold(),
-            ),
+            Span::styled("Google Cloud", Style::default().fg(colors::SUCCESS).bold()),
             Span::styled(" ┃", border_style),
         ]
     };
