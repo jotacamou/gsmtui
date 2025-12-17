@@ -690,8 +690,7 @@ impl App {
             .input_buffer
             .char_indices()
             .nth(self.cursor_position)
-            .map(|(i, _)| i)
-            .unwrap_or(self.input_buffer.len());
+            .map_or(self.input_buffer.len(), |(i, _)| i);
         self.input_buffer.insert(byte_idx, c);
         self.cursor_position += 1;
     }
@@ -704,8 +703,7 @@ impl App {
                 .input_buffer
                 .char_indices()
                 .nth(self.cursor_position - 1)
-                .map(|(i, _)| i)
-                .unwrap_or(0);
+                .map_or(0, |(i, _)| i);
             self.input_buffer.remove(byte_idx);
             self.cursor_position -= 1;
         }
