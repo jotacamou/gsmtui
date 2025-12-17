@@ -97,6 +97,8 @@ pub struct App {
     // --- Input state ---
     /// Current input buffer for text entry
     pub input_buffer: String,
+    /// Cursor position within the input buffer (character index)
+    pub cursor_position: usize,
 
     // --- Help visibility ---
     pub show_help: bool,
@@ -134,6 +136,7 @@ impl App {
             versions_state: ListState::default(),
             revealed_value: None,
             input_buffer: String::new(),
+            cursor_position: 0,
             show_help: false,
             available_projects: Vec::new(),
             projects_state: ListState::default(),
@@ -381,6 +384,7 @@ impl App {
             Action::Quit => return Ok(Some(AppAction::Quit)),
             Action::Back => {
                 self.input_buffer.clear();
+                self.cursor_position = 0;
                 self.go_back();
             }
             Action::Enter => {
@@ -391,6 +395,12 @@ impl App {
             }
             Action::Backspace => {
                 self.input_backspace();
+            }
+            Action::CursorLeft => {
+                self.cursor_left();
+            }
+            Action::CursorRight => {
+                self.cursor_right();
             }
             _ => {}
         }
@@ -599,12 +609,14 @@ impl App {
 
     fn start_new_secret(&mut self) {
         self.input_buffer.clear();
+        self.cursor_position = 0;
         self.previous_view = Some(self.current_view.clone());
         self.current_view = View::Input(InputMode::NewSecretName);
     }
 
     fn start_new_version(&mut self) {
         self.input_buffer.clear();
+        self.cursor_position = 0;
         self.previous_view = Some(self.current_view.clone());
         self.current_view = View::Input(InputMode::NewVersionValue);
     }
@@ -612,6 +624,7 @@ impl App {
     async fn submit_input(&mut self, mode: InputMode) -> Result<()> {
         let input = self.input_buffer.clone();
         self.input_buffer.clear();
+        self.cursor_position = 0;
 
         if input.is_empty() {
             self.set_status("Input cannot be empty", true);
@@ -670,14 +683,47 @@ impl App {
         Ok(())
     }
 
-    /// Appends a character to the input buffer.
+    /// Inserts a character at the current cursor position.
     pub fn input_char(&mut self, c: char) {
-        self.input_buffer.push(c);
+        // Convert to char indices for proper Unicode handling
+        let byte_idx = self
+            .input_buffer
+            .char_indices()
+            .nth(self.cursor_position)
+            .map(|(i, _)| i)
+            .unwrap_or(self.input_buffer.len());
+        self.input_buffer.insert(byte_idx, c);
+        self.cursor_position += 1;
     }
 
-    /// Removes the last character from the input buffer.
+    /// Removes the character before the cursor position.
     pub fn input_backspace(&mut self) {
-        self.input_buffer.pop();
+        if self.cursor_position > 0 {
+            // Find the byte index of the character to remove
+            let byte_idx = self
+                .input_buffer
+                .char_indices()
+                .nth(self.cursor_position - 1)
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            self.input_buffer.remove(byte_idx);
+            self.cursor_position -= 1;
+        }
+    }
+
+    /// Moves the cursor one position to the left.
+    pub fn cursor_left(&mut self) {
+        if self.cursor_position > 0 {
+            self.cursor_position -= 1;
+        }
+    }
+
+    /// Moves the cursor one position to the right.
+    pub fn cursor_right(&mut self) {
+        let char_count = self.input_buffer.chars().count();
+        if self.cursor_position < char_count {
+            self.cursor_position += 1;
+        }
     }
 
     // --- Confirmation dialogs ---
@@ -1093,5 +1139,113 @@ mod tests {
         assert!(app.input_buffer.is_empty()); // Buffer cleared
         assert_eq!(app.current_view, View::Input(InputMode::NewSecretName));
         assert_eq!(app.previous_view, Some(View::SecretsList)); // Saved for go_back
+    }
+
+    // --- Cursor Movement Tests ---
+
+    #[test]
+    fn test_cursor_left_moves_position() {
+        let mut app = App::new(None);
+        app.input_buffer = "hello".to_string();
+        app.cursor_position = 5; // At the end
+
+        app.cursor_left();
+        assert_eq!(app.cursor_position, 4);
+
+        app.cursor_left();
+        assert_eq!(app.cursor_position, 3);
+    }
+
+    #[test]
+    fn test_cursor_left_stops_at_beginning() {
+        let mut app = App::new(None);
+        app.input_buffer = "hello".to_string();
+        app.cursor_position = 0; // At the beginning
+
+        app.cursor_left();
+        assert_eq!(app.cursor_position, 0); // Should not go negative
+    }
+
+    #[test]
+    fn test_cursor_right_moves_position() {
+        let mut app = App::new(None);
+        app.input_buffer = "hello".to_string();
+        app.cursor_position = 0; // At the beginning
+
+        app.cursor_right();
+        assert_eq!(app.cursor_position, 1);
+
+        app.cursor_right();
+        assert_eq!(app.cursor_position, 2);
+    }
+
+    #[test]
+    fn test_cursor_right_stops_at_end() {
+        let mut app = App::new(None);
+        app.input_buffer = "hello".to_string();
+        app.cursor_position = 5; // At the end
+
+        app.cursor_right();
+        assert_eq!(app.cursor_position, 5); // Should not go past the end
+    }
+
+    #[test]
+    fn test_input_char_at_cursor_position() {
+        let mut app = App::new(None);
+        app.input_buffer = "hllo".to_string();
+        app.cursor_position = 1; // After 'h'
+
+        app.input_char('e');
+
+        assert_eq!(app.input_buffer, "hello");
+        assert_eq!(app.cursor_position, 2); // Cursor moves after inserted char
+    }
+
+    #[test]
+    fn test_input_char_at_end() {
+        let mut app = App::new(None);
+        app.input_buffer = "hell".to_string();
+        app.cursor_position = 4; // At the end
+
+        app.input_char('o');
+
+        assert_eq!(app.input_buffer, "hello");
+        assert_eq!(app.cursor_position, 5);
+    }
+
+    #[test]
+    fn test_input_backspace_at_cursor_position() {
+        let mut app = App::new(None);
+        app.input_buffer = "heello".to_string();
+        app.cursor_position = 3; // After "hee"
+
+        app.input_backspace();
+
+        assert_eq!(app.input_buffer, "hello");
+        assert_eq!(app.cursor_position, 2); // Cursor moves back
+    }
+
+    #[test]
+    fn test_input_backspace_at_beginning_does_nothing() {
+        let mut app = App::new(None);
+        app.input_buffer = "hello".to_string();
+        app.cursor_position = 0; // At the beginning
+
+        app.input_backspace();
+
+        assert_eq!(app.input_buffer, "hello"); // Unchanged
+        assert_eq!(app.cursor_position, 0);
+    }
+
+    #[test]
+    fn test_start_new_secret_resets_cursor() {
+        let mut app = App::new(Some("test".to_string()));
+        app.input_buffer = "some text".to_string();
+        app.cursor_position = 5;
+
+        app.start_new_secret();
+
+        assert!(app.input_buffer.is_empty());
+        assert_eq!(app.cursor_position, 0); // Cursor reset to beginning
     }
 }
