@@ -6,7 +6,7 @@
       "package-name": "gsmtui",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": false,
       "draft": false,
       "prerelease": false
     }
