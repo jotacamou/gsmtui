@@ -50,6 +50,10 @@ pub enum Action {
     Char(char),
     /// Backspace key (for text entry mode)
     Backspace,
+    /// Move cursor left in input field
+    CursorLeft,
+    /// Move cursor right in input field
+    CursorRight,
 }
 
 /// Handles terminal events and converts them to application actions.
@@ -109,6 +113,8 @@ impl EventHandler {
             KeyCode::Enter => Some(Action::Enter),
             KeyCode::Esc => Some(Action::Back),
             KeyCode::Backspace => Some(Action::Backspace),
+            KeyCode::Left => Some(Action::CursorLeft),
+            KeyCode::Right => Some(Action::CursorRight),
             KeyCode::Char(c) => Some(Action::Char(c)),
             _ => None,
         }
@@ -364,6 +370,20 @@ mod tests {
         assert_eq!(
             handler.key_to_action(make_key_event(KeyCode::Char('b'))),
             Some(Action::Back)
+        );
+    }
+
+    #[test]
+    fn test_input_mode_cursor_movement() {
+        let handler = EventHandler::new();
+
+        assert_eq!(
+            handler.key_to_input_action(make_key_event(KeyCode::Left)),
+            Some(Action::CursorLeft)
+        );
+        assert_eq!(
+            handler.key_to_input_action(make_key_event(KeyCode::Right)),
+            Some(Action::CursorRight)
         );
     }
 }

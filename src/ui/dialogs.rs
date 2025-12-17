@@ -46,6 +46,14 @@ pub fn draw_input_dialog(frame: &mut Frame, mode: &InputMode, app: &App) {
         ]))
         .padding(Padding::uniform(1));
 
+    // Split the input buffer at cursor position for rendering
+    let (before_cursor, after_cursor): (String, String) = {
+        let chars: Vec<char> = app.input_buffer.chars().collect();
+        let before: String = chars.iter().take(app.cursor_position).collect();
+        let after: String = chars.iter().skip(app.cursor_position).collect();
+        (before, after)
+    };
+
     // Build the content
     let content = vec![
         Line::from(""),
@@ -56,13 +64,14 @@ pub fn draw_input_dialog(frame: &mut Frame, mode: &InputMode, app: &App) {
                 format!("  {INPUT_INDICATOR}"),
                 Style::default().fg(colors::MUTED),
             ),
-            Span::styled(&app.input_buffer, Style::default().fg(Color::White)),
+            Span::styled(before_cursor, Style::default().fg(Color::White)),
             Span::styled(
                 BLOCK_CURSOR,
                 Style::default()
                     .fg(colors::PRIMARY)
                     .add_modifier(Modifier::SLOW_BLINK),
             ),
+            Span::styled(after_cursor, Style::default().fg(Color::White)),
         ]),
         Line::from(""),
         Line::from(""),
