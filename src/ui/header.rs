@@ -106,7 +106,7 @@ pub fn draw_header(frame: &mut Frame, area: Rect, app: &App) {
         Span::styled(" SECRETS ", Style::default().fg(colors::MUTED)),
         Span::styled("│", dim_style),
         Span::styled(" ▪", Style::default().fg(colors::WARNING)),
-        Span::styled(" v1.0   │", border_style),
+        Span::styled(format!(" v{} │", env!("CARGO_PKG_VERSION")), border_style),
     ]);
 
     // Logo line 4 (G tail) + info panel bottom
