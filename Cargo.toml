@@ -1,6 +1,6 @@
 [package]
 name = "gsmtui"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2021"
 description = "A Terminal User Interface for managing Google Cloud Secrets"
 license = "MIT"
