@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/jotacamou/gsmtui/compare/v0.1.0...v0.1.1) (2025-12-21)
+
+
+### Continuous Integration
+
+* fix release workflow ([c882ba3](https://github.com/jotacamou/gsmtui/commit/c882ba33cfb80066c2eba816a7714988991e6d21))
+
 ## [0.1.0](https://github.com/jotacamou/gsmtui/compare/v0.0.1...v0.1.0) (2025-12-20)
 
 
