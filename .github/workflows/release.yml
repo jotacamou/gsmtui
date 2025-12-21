@@ -39,12 +39,6 @@ jobs:
             artifact_name: gsmtui
             asset_name: gsmtui-linux-x86_64
 
-          # macOS x86_64 (Intel)
-          - target: x86_64-apple-darwin
-            os: macos-13
-            artifact_name: gsmtui
-            asset_name: gsmtui-darwin-x86_64
-
           # macOS ARM64 (Apple Silicon)
           - target: aarch64-apple-darwin
             os: macos-14

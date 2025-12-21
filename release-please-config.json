@@ -29,30 +29,6 @@
     {
       "type": "revert",
       "section": "Reverts"
-    },
-    {
-      "type": "docs",
-      "section": "Documentation"
-    },
-    {
-      "type": "chore",
-      "section": "Miscellaneous Chores"
-    },
-    {
-      "type": "refactor",
-      "section": "Code Refactoring"
-    },
-    {
-      "type": "test",
-      "section": "Tests"
-    },
-    {
-      "type": "build",
-      "section": "Build System"
-    },
-    {
-      "type": "ci",
-      "section": "Continuous Integration"
     }
   ]
 }
