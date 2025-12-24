@@ -1,6 +1,15 @@
 # gsmtui
 
+[![CI](https://github.com/jotacamou/gsmtui/actions/workflows/ci.yml/badge.svg)](https://github.com/jotacamou/gsmtui/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/jotacamou/gsmtui)](https://github.com/jotacamou/gsmtui/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A terminal UI for managing Google Cloud Secret Manager secrets.
+
+## Screenshot
+
+<!-- TODO: Add screenshot -->
+![gsmtui screenshot](screenshot.png)
 
 ## Features
 
@@ -12,7 +21,9 @@ A terminal UI for managing Google Cloud Secret Manager secrets.
 
 ## Prerequisites
 
-Authenticate with Google Cloud:
+1. Install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
+
+2. Authenticate with Google Cloud:
 
 ```bash
 gcloud auth application-default login
